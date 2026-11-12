@@ -1,0 +1,19 @@
+[project]
+name = "tools"
+version = "1.0.0"
+requires-python = ">=3.11"
+dependencies = [
+  "aegis-libs ",
+  "fastapi>=0.115",
+  "uvicorn>=0.34",
+  "asyncpg>=0.29",
+  "redis>=5.0",
+  "pyyaml>=6",
+  "pyjwt[crypto]>=2.8",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+aegis-libs  = { workspace = true }
