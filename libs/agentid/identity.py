@@ -320,6 +320,28 @@ def _validate_leaf(leaf: x509.Certificate, key: PrivateKeyTypes, now: datetime.d
                             "private key does not match leaf certificate")
 
 
+def _base_context(ctx: ssl.SSLContext) -> ssl.SSLContext:
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_3
+    ctx.maximum_version = ssl.TLSVersion.TLSv1_3
+    ctx.set_alpn_protocols([ALPN])
+    ctx.verify_mode = ssl.CERT_REQUIRED
+    return ctx
+
+
+def server_ctx(*, certfile: str, keyfile: str, cafile: str) -> ssl.SSLContext:
+    ctx = _base_context(ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER))
+    ctx.load_cert_chain(certfile=certfile, keyfile=keyfile)
+    ctx.load_verify_locations(cafile=cafile)
+    ctx.num_tickets = 0  # Disable TLS 1.3 session resumption
+    return ctx
+
+
+def client_ctx(*, certfile: str, keyfile: str, cafile: str) -> ssl.SSLContext:
+    ctx = _base_context(ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT))
+    ctx.check_hostname = False  # Identity is validated via SPIFFE URI SAN pinned in wrap()
+    ctx.load_cert_chain(certfile=certfile, keyfile=keyfile)
+    ctx.load_verify_locations(cafile=cafile)
+    return ctx
 
 def _build_tls13_contexts(
     cert_pem: bytes,
@@ -343,26 +365,14 @@ def _build_tls13_contexts(
             os.fsync(fd)
         finally:
             os.close(fd)
-
     try:
         _write(cert_file, cert_pem, 0o600)
         _write(key_file, key_pem, 0o600)
         _write(bundle_file, bundle_pem, 0o644)
-
-        def _ctx(server: bool) -> ssl.SSLContext:
-            proto = ssl.PROTOCOL_TLS_SERVER if server else ssl.PROTOCOL_TLS_CLIENT
-            ctx = ssl.SSLContext(proto)
-            ctx.minimum_version = ssl.TLSVersion.TLSv1_3
-            ctx.maximum_version = ssl.TLSVersion.TLSv1_3
-            ctx.verify_mode = ssl.CERT_REQUIRED
-            ctx.check_hostname = False
-            ctx.options |= ssl.OP_NO_COMPRESSION | ssl.OP_NO_TICKET
-            ctx.load_verify_locations(cafile=bundle_file)
-            ctx.set_alpn_protocols(ALPN)
-            ctx.load_cert_chain(certfile=cert_file, keyfile=key_file)
-            return ctx
-
-        return _ctx(True), _ctx(False)
+        return (
+            server_ctx(certfile=cert_file, keyfile=key_file, cafile=bundle_file),
+            client_ctx(certfile=cert_file, keyfile=key_file, cafile=bundle_file)
+        )
     finally:
         for p in (key_file, cert_file, bundle_file):
             try:
@@ -373,6 +383,7 @@ def _build_tls13_contexts(
             os.rmdir(tmpdir)
         except OSError:
             pass
+
 
 
 

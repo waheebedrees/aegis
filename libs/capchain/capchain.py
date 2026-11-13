@@ -527,72 +527,6 @@ def verify_signature(
 
 
 
-class CapChainKey:
-    """An Ed25519 key belonging to one workload.
-
-    Generate at boot and enroll it, or load a 32-byte seed from secure
-    storage for a long-lived root. `agent_id` is optional metadata; the
-    binding that matters is `thumbprint == parent block's cnf`.
-    """
-
-    __slots__ = (
-        "_private",
-        "_public",
-        "_thumbprint",
-        "agent_id",
-    )
-
-    def __init__(
-        self,
-        private_key: Ed25519PrivateKey,
-        *,
-        agent_id: str | None = None,
-    ) -> None:
-        self._private = private_key
-        self._public = private_key.public_key().public_bytes(
-            serialization.Encoding.Raw,
-            serialization.PublicFormat.Raw,
-        )
-        self._thumbprint = thumbprint(self._public)
-        self.agent_id = agent_id
-
-    @classmethod
-    def generate(cls, *, agent_id: str | None = None) -> CapChainKey:
-        return cls(
-            Ed25519PrivateKey.generate(),
-            agent_id=agent_id,
-        )
-
-    @classmethod
-    def from_seed(
-        cls,
-        seed: bytes,
-        *,
-        agent_id: str | None = None,
-    ) -> CapChainKey:
-        if not isinstance(seed, bytes) or len(seed) != PRIVATE_SEED_BYTES:
-            raise ValueError(f"seed must be {PRIVATE_SEED_BYTES} bytes")
-        return cls(
-            Ed25519PrivateKey.from_private_bytes(seed),
-            agent_id=agent_id,
-        )
-
-    @property
-    def public_key(self) -> bytes:
-        return self._public
-
-    @property
-    def thumbprint(self) -> str:
-        """The value that appears as `cnf` in a token block."""
-        return self._thumbprint
-
-    def sign(self, context: bytes, message: bytes) -> bytes:
-        """Internal: sign under a domain-separation context."""
-        return self._private.sign(domain_separate(context, message))
-
-    def __repr__(self) -> str:
-        return f"WorkloadKey(agent_id={self.agent_id!r}, thumbprint={self._thumbprint[:16]}...)"
-
 
 
 class TrustedRoots:
@@ -1255,6 +1189,95 @@ class EnrolledKey:
     receipt: bytes
     valid_until: int
 
+
+class CapChainKey:
+    """An Ed25519 key belonging to one workload.
+
+    Generate at boot and enroll it, or load a 32-byte seed from secure
+    storage for a long-lived root. `agent_id` is optional metadata; the
+    binding that matters is `thumbprint == parent block's cnf`.
+    """
+
+    __slots__ = (
+        "_private",
+        "_public",
+        "_thumbprint",
+        "agent_id",
+    )
+
+    def __init__(
+        self,
+        private_key: Ed25519PrivateKey,
+        *,
+        agent_id: str | None = None,
+    ) -> None:
+        self._private = private_key
+        self._public = private_key.public_key().public_bytes(
+            serialization.Encoding.Raw,
+            serialization.PublicFormat.Raw,
+        )
+        self._thumbprint = thumbprint(self._public)
+        self.agent_id = agent_id
+
+    @classmethod
+    def generate(cls, *, agent_id: str | None = None) -> CapChainKey:
+        return cls(
+            Ed25519PrivateKey.generate(),
+            agent_id=agent_id,
+        )
+
+    @classmethod
+    def from_seed(
+        cls,
+        seed: bytes,
+        *,
+        agent_id: str | None = None,
+    ) -> CapChainKey:
+        if not isinstance(seed, bytes) or len(seed) != PRIVATE_SEED_BYTES:
+            raise ValueError(f"seed must be {PRIVATE_SEED_BYTES} bytes")
+        return cls(
+            Ed25519PrivateKey.from_private_bytes(seed),
+            agent_id=agent_id,
+        )
+
+    @property
+    def public_key(self) -> bytes:
+        return self._public
+
+    @property
+    def thumbprint(self) -> str:
+        """The value that appears as `cnf` in a token block."""
+        return self._thumbprint
+
+    def sign(self, context: bytes, message: bytes) -> bytes:
+        """Internal: sign under a domain-separation context."""
+        return self._private.sign(domain_separate(context, message))
+
+    def __repr__(self) -> str:
+        return f"WorkloadKey(agent_id={self.agent_id!r}, thumbprint={self._thumbprint[:16]}...)"
+
+    def make_pop(
+        self,
+        token: bytes,
+        verifier_id: str,
+        resource: str,
+        action: str,
+        body: bytes,
+        channel_binding: bytes,
+        now: int,
+        nonce: str | None = None,
+    ):
+        return make_pop(
+            self,
+            token=token,
+            verifier_id=verifier_id,
+            resource=resource,
+            action=action,
+            body=body,
+            channel_binding=channel_binding,
+            nonce=nonce,
+            now=now
+        )
 
 
 def derive_cid(holder: str, session_id: str) -> str:

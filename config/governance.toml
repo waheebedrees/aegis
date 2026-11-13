@@ -1,0 +1,32 @@
+# Managed by scripts/governance.py — do not hand-edit.
+
+version = 1
+not_before = 2026-01-01T00:00:00+00:00
+expires_at = 2026-04-01T00:00:00+00:00
+
+[trust]
+roots = [
+  { issuer = "spiffe://aegis-test/node-1", keys = ["TU3lucfDY2xh3osj64aAVPKiU4LwyYi9psme0RQ6wew"] },
+]
+enrollment = "1vMjn2qJPU7DtaHWLoeYjyyaFkhcQMD5kDyHo-iddXY"
+
+[policy]
+max_depth = 1
+models = ["key_bound"]
+peer_bound_tools = []
+edges = [
+  { parent = "spiffe://aegis-test/node-1", child = "spiffe://aegis-test/node-2", max_ttl = 3600, max_children = 4, ceiling = { tools = ["payments:read"], budget = 1000000, audience = ["spiffe://aegis-test/gateway"] } },
+]
+
+[[issuance]]
+holder = "spiffe://aegis-test/node-2"
+ttl = 600
+max_depth = 1
+model = "key_bound"
+scope = { tools = ["payments:read"], budget = 1000000, audience = ["spiffe://aegis-test/gateway"] }
+
+[pricing]
+rules = [
+  { tool = "payments:read", base_micros = 1000 },
+]
+default = { base_micros = 1000 }

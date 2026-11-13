@@ -28,6 +28,7 @@ dependencies = [
     { name = "dotenv" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
+    { name = "pydantic" },
     { name = "redis" },
 ]
 
@@ -46,6 +47,7 @@ requires-dist = [
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.8" },
     { name = "psycopg-pool", specifier = ">=3.3.3" },
+    { name = "pydantic", specifier = ">=2.14.3" },
     { name = "redis", specifier = ">=8.1.0" },
 ]
 
