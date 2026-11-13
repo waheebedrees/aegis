@@ -106,8 +106,6 @@ services:
     hostname: orchestrator
     labels:
       role: orchestrator
-
-
     develop:
       watch:
         - action: sync
@@ -136,7 +134,6 @@ services:
       role: worker
     develop:
       watch:
-    
         - action: sync
           path: ./aegis/services/worker
           target: /app
