@@ -4,6 +4,8 @@ Invoke as:
     python -m gov <subcommand> [flags]
 or:
     python gov.py <subcommand> [flags]
+or (installed):
+    aegis <subcommand> [flags]
 
 ═══════════════════════════════════════════════════════════════════════════
 QUICK START — bootstrap a fresh cluster
@@ -11,7 +13,7 @@ QUICK START — bootstrap a fresh cluster
 
 1. Generate all keys (one-shot):
 
-       python -m gov gen-keys --dir keys --agents node-2
+       aegis gen-keys --dir keys --agents node-2
 
    Produces:
        keys/authority.{pub,seed}     signs the bundle (keep seed offline)
@@ -25,7 +27,7 @@ QUICK START — bootstrap a fresh cluster
 
 3. Create governance.toml and populate it:
 
-       python -m gov init \\
+       aegis init \\
            --issuer-key     keys/issuer.pub \\
            --issuer-spiffe  spiffe://aegis-test/node-1 \\
            --enrollment-key keys/enrollment.pub \\
@@ -33,16 +35,16 @@ QUICK START — bootstrap a fresh cluster
            --expires-at     2026-04-01T00:00:00Z \\
            --out            config/governance.toml
 
-       python -m gov add-pricing  --tool payments:read --base 1000
+       aegis add-pricing  --tool payments:read --base 1000
 
-       python -m gov add-edge     --parent spiffe://aegis-test/node-1 \\
+       aegis add-edge     --parent spiffe://aegis-test/node-1 \\
                                   --child  spiffe://aegis-test/node-2 \\
                                   --max-ttl 3600 --max-children 4 \\
                                   --ceiling-tools payments:read \\
                                   --ceiling-budget 1000000 \\
                                   --ceiling-audience spiffe://aegis-test/gateway
 
-       python -m gov add-issuance --holder spiffe://aegis-test/node-2 \\
+       aegis add-issuance --holder spiffe://aegis-test/node-2 \\
                                   --ttl 600 --max-depth 1 --model key_bound \\
                                   --scope-tools payments:read \\
                                   --scope-budget 1000000 \\
@@ -50,23 +52,23 @@ QUICK START — bootstrap a fresh cluster
 
 4. Validate and sign:
 
-       python -m gov validate
-       python -m gov sign --key keys/authority.seed --out config/governance.bundle
+       aegis validate
+       aegis sign --key keys/authority.seed --out config/governance.bundle
 
 5. Generate node configs (one per node):
 
-       python -m gov gen-node --name issuer --role issuer \\
+       aegis gen-node --name issuer --role issuer \\
            --spiffe-id spiffe://aegis-test/node-1 \\
            --listen 127.0.0.1:8444 \\
            --out config/node-issuer.toml
 
-       python -m gov gen-node --name gateway --role gateway \\
+       aegis gen-node --name gateway --role gateway \\
            --spiffe-id spiffe://aegis-test/gateway \\
            --listen 127.0.0.1:8443 \\
            --peer "tool=127.0.0.1:8445@spiffe://aegis-test/tool" \\
            --out config/node-gateway.toml
 
-       python -m gov gen-node --name node-2 --role agent \\
+       aegis gen-node --name node-2 --role agent \\
            --spiffe-id spiffe://aegis-test/node-2 \\
            --peer "gateway=127.0.0.1:8443@spiffe://aegis-test/gateway" \\
            --peer "parent=127.0.0.1:8444@spiffe://aegis-test/node-1" \\
@@ -81,17 +83,17 @@ DAY-2 WORKFLOW — after the cluster is running
     Bump `version = N` at the top.
     Then:
 
-       python -m gov validate
-       python -m gov sign --key keys/authority.seed --out config/governance.bundle
+       aegis validate
+       aegis sign --key keys/authority.seed --out config/governance.bundle
 
     Copy the new bundle to each node, or let hot-reload pick it up.
 
     Add a new node:
 
-       python -m gov gen-keys --dir keys --agents node-3
+       aegis gen-keys --dir keys --agents node-3
        python pki.py --out certs                      # include node-3
-       python -m gov add-edge     --parent ... --child spiffe://aegis-test/node-3 ...
-       python -m gov add-issuance --holder spiffe://aegis-test/node-3 ...
+       aegis add-edge     --parent ... --child spiffe://aegis-test/node-3 ...
+       aegis add-issuance --holder spiffe://aegis-test/node-3 ...
        # bump version, sign, gen-node --name node-3 --role agent
 
     Do NOT re-run `init --force` — it resets every edge, issuance, and
@@ -161,31 +163,8 @@ EXIT CODES
 
     0    success
     1    runtime error (I/O failure, bad argument)
-    2    validation error (schema or config error)
+    2    validation error (schema or config error, or argparse usage)
     130  interrupted (Ctrl-C)
-
-═══════════════════════════════════════════════════════════════════════════
-CHANGELOG — v0.2.0
-═══════════════════════════════════════════════════════════════════════════
-
-  - Migrated argparse → Typer; every command is a typed function.
-  - Rich output for `show` (tables), `--dry-run` (syntax-highlighted TOML),
-    and warnings.
-  - Mutators compile-check the resulting document before writing. A CLI
-    edit that would produce an invalid config is refused, not written.
-  - `--dry-run` on every mutator.
-  - `show --json` and `validate --json` for scripts.
-  - `validate` surfaces non-fatal warnings (expiry window, missing
-    [enrollment] policy, edges-without-issuance).
-  - Cross-platform file lock: fcntl on POSIX, msvcrt on Windows.
-  - `--version` uses an eager callback so it works without a subcommand.
-  - `gen-keys` skips existing keys by default (`--strict` to abort,
-    `--force` to overwrite). Fixes the day-2 `--agents node-3` workflow.
-  - `gen-node --listen` and `--spiffe-id` validated at parse time.
-  - Duplicate `--peer NAME=` rejected.
-  - Self-edges (parent == child) rejected.
-  - `_save` uses flock + fsync + atomic replace, with cross-platform lock.
-  - Top-level `OSError` mapped to exit 1 with a clean message.
 """
 
 from __future__ import annotations
