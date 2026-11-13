@@ -1,11 +1,9 @@
-"""Aegis governance CLI.
+"""gov.py — Aegis governance CLI.
 
 Invoke as:
     python -m gov <subcommand> [flags]
 or:
     python gov.py <subcommand> [flags]
-or (installed):
-    aegis <subcommand> [flags]
 
 ═══════════════════════════════════════════════════════════════════════════
 QUICK START — bootstrap a fresh cluster
@@ -13,7 +11,7 @@ QUICK START — bootstrap a fresh cluster
 
 1. Generate all keys (one-shot):
 
-       aegis gen-keys --dir keys --agents node-2
+       python -m gov gen-keys --dir keys --agents node-2
 
    Produces:
        keys/authority.{pub,seed}     signs the bundle (keep seed offline)
@@ -27,7 +25,7 @@ QUICK START — bootstrap a fresh cluster
 
 3. Create governance.toml and populate it:
 
-       aegis init \\
+       python -m gov init \\
            --issuer-key     keys/issuer.pub \\
            --issuer-spiffe  spiffe://aegis-test/node-1 \\
            --enrollment-key keys/enrollment.pub \\
@@ -35,16 +33,16 @@ QUICK START — bootstrap a fresh cluster
            --expires-at     2026-04-01T00:00:00Z \\
            --out            config/governance.toml
 
-       aegis add-pricing  --tool payments:read --base 1000
+       python -m gov add-pricing  --tool payments:read --base 1000
 
-       aegis add-edge     --parent spiffe://aegis-test/node-1 \\
+       python -m gov add-edge     --parent spiffe://aegis-test/node-1 \\
                                   --child  spiffe://aegis-test/node-2 \\
                                   --max-ttl 3600 --max-children 4 \\
                                   --ceiling-tools payments:read \\
                                   --ceiling-budget 1000000 \\
                                   --ceiling-audience spiffe://aegis-test/gateway
 
-       aegis add-issuance --holder spiffe://aegis-test/node-2 \\
+       python -m gov add-issuance --holder spiffe://aegis-test/node-2 \\
                                   --ttl 600 --max-depth 1 --model key_bound \\
                                   --scope-tools payments:read \\
                                   --scope-budget 1000000 \\
@@ -52,23 +50,23 @@ QUICK START — bootstrap a fresh cluster
 
 4. Validate and sign:
 
-       aegis validate
-       aegis sign --key keys/authority.seed --out config/governance.bundle
+       python -m gov validate
+       python -m gov sign --key keys/authority.seed --out config/governance.bundle
 
 5. Generate node configs (one per node):
 
-       aegis gen-node --name issuer --role issuer \\
+       python -m gov gen-node --name issuer --role issuer \\
            --spiffe-id spiffe://aegis-test/node-1 \\
            --listen 127.0.0.1:8444 \\
            --out config/node-issuer.toml
 
-       aegis gen-node --name gateway --role gateway \\
+       python -m gov gen-node --name gateway --role gateway \\
            --spiffe-id spiffe://aegis-test/gateway \\
            --listen 127.0.0.1:8443 \\
            --peer "tool=127.0.0.1:8445@spiffe://aegis-test/tool" \\
            --out config/node-gateway.toml
 
-       aegis gen-node --name node-2 --role agent \\
+       python -m gov gen-node --name node-2 --role agent \\
            --spiffe-id spiffe://aegis-test/node-2 \\
            --peer "gateway=127.0.0.1:8443@spiffe://aegis-test/gateway" \\
            --peer "parent=127.0.0.1:8444@spiffe://aegis-test/node-1" \\
@@ -83,17 +81,17 @@ DAY-2 WORKFLOW — after the cluster is running
     Bump `version = N` at the top.
     Then:
 
-       aegis validate
-       aegis sign --key keys/authority.seed --out config/governance.bundle
+       python -m gov validate
+       python -m gov sign --key keys/authority.seed --out config/governance.bundle
 
     Copy the new bundle to each node, or let hot-reload pick it up.
 
     Add a new node:
 
-       aegis gen-keys --dir keys --agents node-3
+       python -m gov gen-keys --dir keys --agents node-3
        python pki.py --out certs                      # include node-3
-       aegis add-edge     --parent ... --child spiffe://aegis-test/node-3 ...
-       aegis add-issuance --holder spiffe://aegis-test/node-3 ...
+       python -m gov add-edge     --parent ... --child spiffe://aegis-test/node-3 ...
+       python -m gov add-issuance --holder spiffe://aegis-test/node-3 ...
        # bump version, sign, gen-node --name node-3 --role agent
 
     Do NOT re-run `init --force` — it resets every edge, issuance, and
@@ -163,8 +161,31 @@ EXIT CODES
 
     0    success
     1    runtime error (I/O failure, bad argument)
-    2    validation error (schema or config error, or argparse usage)
+    2    validation error (schema or config error)
     130  interrupted (Ctrl-C)
+
+═══════════════════════════════════════════════════════════════════════════
+CHANGELOG — v0.2.0
+═══════════════════════════════════════════════════════════════════════════
+
+  - Migrated argparse → Typer; every command is a typed function.
+  - Rich output for `show` (tables), `--dry-run` (syntax-highlighted TOML),
+    and warnings.
+  - Mutators compile-check the resulting document before writing. A CLI
+    edit that would produce an invalid config is refused, not written.
+  - `--dry-run` on every mutator.
+  - `show --json` and `validate --json` for scripts.
+  - `validate` surfaces non-fatal warnings (expiry window, missing
+    [enrollment] policy, edges-without-issuance).
+  - Cross-platform file lock: fcntl on POSIX, msvcrt on Windows.
+  - `--version` uses an eager callback so it works without a subcommand.
+  - `gen-keys` skips existing keys by default (`--strict` to abort,
+    `--force` to overwrite). Fixes the day-2 `--agents node-3` workflow.
+  - `gen-node --listen` and `--spiffe-id` validated at parse time.
+  - Duplicate `--peer NAME=` rejected.
+  - Self-edges (parent == child) rejected.
+  - `_save` uses flock + fsync + atomic replace, with cross-platform lock.
+  - Top-level `OSError` mapped to exit 1 with a clean message.
 """
 
 from __future__ import annotations
@@ -198,7 +219,7 @@ from config.governance import (
     thumbprint,
 )
 
-# Cross-platform file locking
+# Cross-platform exclusive file lock (POSIX: fcntl, Windows: msvcrt).
 if sys.platform == "win32":
     import msvcrt
 else:
@@ -215,7 +236,6 @@ __version__ = "0.2.0"
 app = typer.Typer(
     name="aegis",
     help="Aegis governance CLI — bootstrap, edit, validate, sign.",
-    no_args_is_help=False,   # we handle bare invocation ourselves
     rich_markup_mode="rich",
     add_completion=False,
 )
@@ -230,42 +250,8 @@ class _State:
 state = _State()
 
 
-def _version_callback(value: bool) -> None:
-    if value:
-        stdout.print(f"aegis {__version__}")
-        raise typer.Exit()
-
-
-@app.callback(invoke_without_command=True)
-def _main_callback(
-    ctx: typer.Context,
-    file: Annotated[Path, typer.Option("--file", help="Path to governance.toml")] = Path(
-        "config/governance.toml"
-    ),
-    verbose: Annotated[bool, typer.Option("-v", "--verbose", help="Verbose diagnostics")] = False,
-    version: Annotated[
-        bool,
-        typer.Option(
-            "--version",
-            callback=_version_callback,
-            is_eager=True,
-            help="Show version and exit",
-        ),
-    ] = False,
-) -> None:
-    """Global options."""
-    if ctx.invoked_subcommand is None and not version:
-        # No subcommand: show help (mimics no_args_is_help=True without
-        # breaking the --version eager callback).
-        stdout.print(ctx.get_help())
-        raise typer.Exit()
-    state.file = file
-    if verbose:
-        stderr.print(f"[dim]file={file}[/dim]")
-
-
 # ═════════════════════════════════════════════════════════════════════════
-# Error / output helpers  (all user text is escaped before Rich sees it)
+# Error / output helpers
 # ═════════════════════════════════════════════════════════════════════════
 
 def _die(msg: str, code: int = 2) -> typer.Exit:
@@ -279,31 +265,6 @@ def _warn(msg: str) -> None:
 
 def _ok(msg: str) -> None:
     stdout.print(f"[green]✓[/green] {escape(msg)}")
-
-
-def _info(msg: str) -> None:
-    stdout.print(escape(msg))
-
-
-# ═════════════════════════════════════════════════════════════════════════
-# Cross-platform locking
-# ═════════════════════════════════════════════════════════════════════════
-
-def _lock_exclusive(fh) -> None:
-    """Exclusive advisory lock on an open file handle. Cross-platform."""
-    if sys.platform == "win32":
-        fh.seek(0)
-        msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
-    else:
-        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
-
-
-def _unlock(fh) -> None:
-    if sys.platform == "win32":
-        fh.seek(0)
-        msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
-    else:
-        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -386,7 +347,9 @@ def _fmt_time(v: Any) -> str:
 
 
 def _show_time(v: Any) -> str:
-    """Best-effort renderer for display; never raises."""
+    """Best-effort ISO-8601 rendering for display-only fields."""
+    if v is None:
+        return "?"
     try:
         return _fmt_time(v)
     except ConfigError:
@@ -418,13 +381,11 @@ def _enc_cost(c: dict, *, with_tool: bool) -> str:
 
 def _render(doc: dict) -> str:
     L: list[str] = [
-        "# Managed by gov.py — comments are not preserved across mutations.",
-        "# Day-2 workflow: edit this file by hand, bump `version`, then",
-        "#   aegis validate && aegis sign --key keys/authority.seed --out config/governance.bundle",
+        "# Managed by gov.py. Comments are not preserved across mutations.",
         "",
         f'version = {doc["version"]}',
-        f'not_before = {_fmt_time(doc["not_before"])}',
-        f'expires_at = {_fmt_time(doc["expires_at"])}',
+        f"not_before = {_fmt_time(doc['not_before'])}",
+        f"expires_at = {_fmt_time(doc['expires_at'])}",
         "",
         "[trust]",
         "roots = [",
@@ -490,11 +451,26 @@ def _render(doc: dict) -> str:
     return "\n".join(L)
 
 
+def _lock_exclusive(fh) -> None:
+    if sys.platform == "win32":
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+    else:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+
+
+def _unlock(fh) -> None:
+    if sys.platform == "win32":
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
 def _atomic_write(path: Path, text: str) -> None:
     old_mode = path.stat().st_mode & 0o777 if path.exists() else 0o644
     path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = path.with_name(path.name + ".lock")
-
     with lock_path.open("w") as lock:
         _lock_exclusive(lock)
         try:
@@ -510,7 +486,6 @@ def _atomic_write(path: Path, text: str) -> None:
 
 
 def _commit(path: Path, doc: dict, *, dry_run: bool, validate: bool = True) -> None:
-    """Render + optionally compile-check + atomically write (or preview)."""
     text = _render(doc)
     if validate:
         try:
@@ -557,6 +532,46 @@ def _generate_keypair(pub_path: Path, seed_path: Path) -> None:
     pub_path.chmod(0o644)
 
 
+# ═════════════════════════════════════════════════════════════════════════
+# Callback
+# ═════════════════════════════════════════════════════════════════════════
+
+def _version_callback(value: bool) -> None:
+    if value:
+        stdout.print(f"aegis {__version__}")
+        raise typer.Exit()
+
+
+@app.callback(invoke_without_command=True)
+def _main_callback(
+    ctx: typer.Context,
+    file: Annotated[Path, typer.Option("--file", help="Path to governance.toml")] = Path(
+        "config/governance.toml"
+    ),
+    verbose: Annotated[bool, typer.Option("-v", "--verbose", help="Verbose diagnostics")] = False,
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            callback=_version_callback,
+            is_eager=True,
+            help="Show version and exit",
+        ),
+    ] = False,
+) -> None:
+    """Global options."""
+    if ctx.invoked_subcommand is None and not version:
+        stdout.print(ctx.get_help())
+        raise typer.Exit()
+    state.file = file
+    if verbose:
+        stderr.print(f"[dim]file={file}[/dim]")
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# gen-keys
+# ═════════════════════════════════════════════════════════════════════════
+
 @app.command("gen-keys")
 def gen_keys(
     directory: Annotated[Path, typer.Option("--dir", help="Key directory")] = Path("keys"),
@@ -566,12 +581,7 @@ def gen_keys(
         bool, typer.Option("--strict", help="Abort if any key already exists")
     ] = False,
 ) -> None:
-    """Generate Ed25519 keypairs (authority, issuer, enrollment, agents).
-
-    Existing files are skipped by default so the day-2 "add a node" workflow
-    works: `aegis gen-keys --agents node-3` after the cluster is bootstrapped.
-    Pass --force to overwrite, --strict to abort on any existing key.
-    """
+    """Generate Ed25519 keypairs (authority, issuer, enrollment, agents)."""
     pairs = [
         ("authority", directory / "authority.pub", directory / "authority.seed"),
         ("issuer", directory / "issuer.pub", directory / "issuer.seed"),
@@ -585,7 +595,7 @@ def gen_keys(
         if exists and not force:
             if strict:
                 raise _die(f"{name}: key exists (drop --strict or pass --force)")
-            _info(f"  skip {name} (exists)")
+            stdout.print(f"[dim]  skip {name} (exists)[/dim]")
             continue
         _generate_keypair(pub, seed)
         _ok(f"generated {pub}")
@@ -606,10 +616,7 @@ def init(
     out: Annotated[Path, typer.Option("--out")] = Path("config/governance.toml"),
     force: Annotated[bool, typer.Option("--force")] = False,
 ) -> None:
-    """Create a fresh governance.toml (one-shot bootstrap).
-
-    WARNING: --force overwrites every edge, issuance, and pricing rule.
-    """
+    """Create a fresh governance.toml (one-shot bootstrap)."""
     _check_spiffe(issuer_spiffe)
     if out.exists() and not force:
         raise _die(f"{out} exists (pass --force to overwrite)")
@@ -693,7 +700,7 @@ def _parse_listen(spec: str) -> tuple[str, int]:
 def _render_node_toml(d: dict) -> str:
     p = lambda v: Path(v).as_posix()  # noqa: E731
     L = [
-        "# Generated by `aegis gen-node` — safe to edit, never regenerated.",
+        "# Generated by `gov.py gen-node` — safe to edit, never regenerated.",
         "",
         f'role        = "{d["role"]}"',
         f'spiffe_id   = "{d["spiffe_id"]}"',
@@ -744,10 +751,7 @@ def gen_node(
     spiffe_id: Annotated[str, typer.Option("--spiffe-id")],
     environment: Annotated[str, typer.Option("--environment")] = "development",
     listen: Annotated[str | None, typer.Option("--listen", help="HOST:PORT")] = None,
-    peer: Annotated[
-        list[str],
-        typer.Option("--peer", help="NAME=HOST:PORT@SPIFFE_ID (repeatable)"),
-    ] = [],
+    peer: Annotated[list[str], typer.Option("--peer", help="NAME=HOST:PORT@SPIFFE_ID (repeatable)")] = [],
     authority: Annotated[Path, typer.Option("--authority")] = Path("keys/authority.pub"),
     bundle: Annotated[Path, typer.Option("--bundle")] = Path("config/governance.bundle"),
     cert: Annotated[Path | None, typer.Option("--cert")] = None,
@@ -934,7 +938,7 @@ def show(
     doc = _load_decoded(state.file)
     summary = _summarize(doc)
     if as_json:
-        stdout.print_json(json.dumps(summary, default=str))
+        stdout.print(json.dumps(summary, indent=2, default=str))
         return
 
     roots = Table(title="Trust Roots", show_header=True, header_style="bold cyan")
@@ -957,7 +961,7 @@ def show(
     meta.add_column("field", style="cyan")
     meta.add_column("value")
     for key in ("version", "not_before", "expires_at"):
-        meta.add_row(key, str(summary[key] if key != "version" else summary["version"]))
+        meta.add_row(key, str(doc.get(key, "?")))
     meta.add_row("max_depth", str(doc["policy"]["max_depth"]))
     meta.add_row("models", ", ".join(doc["policy"]["models"]))
     meta.add_row("edges", str(len(doc["policy"]["edges"])))
@@ -982,7 +986,7 @@ def validate(
         compile_document(raw)
     except ConfigError as exc:
         if as_json:
-            stdout.print_json(json.dumps({"ok": False, "error": str(exc)}))
+            stdout.print(json.dumps({"ok": False, "error": str(exc)}, indent=2))
         else:
             stderr.print(f"[bold red]invalid:[/bold red] {escape(str(exc))}")
         raise typer.Exit(2)
@@ -992,7 +996,7 @@ def validate(
         _warn(w)
 
     if as_json:
-        stdout.print_json(json.dumps({"ok": True, "warnings": warnings}))
+        stdout.print(json.dumps({"ok": True, "warnings": warnings}, indent=2))
     else:
         _ok("valid" + (f" ({len(warnings)} warning(s))" if warnings else ""))
 
@@ -1001,9 +1005,7 @@ def validate(
 def sign(
     key: Annotated[Path, typer.Option("--key", help="Authority SEED (current)")],
     out: Annotated[Path, typer.Option("--out", help="Bundle output path")],
-    next_key: Annotated[
-        Path | None, typer.Option("--next-key", help="Authority SEED (rotation)")
-    ] = None,
+    next_key: Annotated[Path | None, typer.Option("--next-key", help="Authority SEED (rotation)")] = None,
 ) -> None:
     """Compile governance.toml and sign the bundle."""
     try:
@@ -1016,11 +1018,7 @@ def sign(
     except (OSError, ValueError) as exc:
         raise _die(f"key error: {exc}", 2)
 
-    raw = (
-        sign_bundle_with_rotation(doc, current, nxt)
-        if nxt is not None
-        else sign_bundle(doc, current)
-    )
+    raw = sign_bundle_with_rotation(doc, current, nxt) if nxt is not None else sign_bundle(doc, current)
 
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_name(out.name + ".tmp")
@@ -1235,9 +1233,7 @@ def add_edge(
 def remove_edge(
     parent: Annotated[str, typer.Option("--parent")],
     child: Annotated[str, typer.Option("--child")],
-    force: Annotated[
-        bool, typer.Option("--force", help="Remove even if orphaned issuance exists")
-    ] = False,
+    force: Annotated[bool, typer.Option("--force", help="Remove even if orphaned issuance exists")] = False,
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
 ) -> None:
     """Remove an edge identified by (parent, child)."""
@@ -1337,9 +1333,7 @@ def add_pricing(
 @app.command("remove-pricing")
 def remove_pricing(
     tool: Annotated[str, typer.Option("--tool")],
-    force: Annotated[
-        bool, typer.Option("--force", help="Write even if the result is invalid")
-    ] = False,
+    force: Annotated[bool, typer.Option("--force", help="Write even if the result is invalid")] = False,
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
 ) -> None:
     """Remove a pricing rule by exact tool name."""
