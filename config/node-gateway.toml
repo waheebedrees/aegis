@@ -5,9 +5,6 @@ spiffe_id   = "spiffe://aegis-test/gateway"
 environment = "development"
 
 [tls]
-cert_file     = "certs/gateway.crt"
-key_file      = "certs/gateway.key"
-ca_file       = "certs/ca.crt"
 trust_domains = ["aegis-test"]
 
 [governance]

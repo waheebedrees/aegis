@@ -1,10 +1,8 @@
-
-
 from __future__ import annotations
 
 import asyncio
 from datetime import datetime, UTC, timedelta
-import sys 
+import sys
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +31,7 @@ def authorize_id(spiffe_id: str) -> Authorizer:
         raise ValueError(f"not a spiffe id: {spiffe_id!r}")
     return lambda peer: peer == spiffe_id
 
+
 def authorize_one_of(ids: Iterable[str]) -> Authorizer:
     """Accept any of a fixed set. Use for server with N known nodes."""
     allowed = frozenset(ids)
@@ -43,6 +42,7 @@ def authorize_one_of(ids: Iterable[str]) -> Authorizer:
             raise ValueError(f"not a spiffe id: {i!r}")
     return lambda peer: peer in allowed
 
+
 def authorize_member_of(trust_domain: str) -> Authorizer:
     """Accept any workload in a trust domain. e.g. 'spiffe://aegis-test'."""
     td = trust_domain.rstrip("/")
@@ -52,22 +52,19 @@ def authorize_member_of(trust_domain: str) -> Authorizer:
     return lambda peer: peer.startswith(prefix)
 
 
-
 def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
 def pem(cert: x509.Certificate, key: ec.EllipticCurvePrivateKey):
     return (
-    cert.public_bytes(serialization.Encoding.PEM),
-    key.private_bytes(
+        cert.public_bytes(serialization.Encoding.PEM),
+        key.private_bytes(
             serialization.Encoding.PEM,
             serialization.PrivateFormat.PKCS8,
             serialization.NoEncryption(),
         ),
     )
-
-
 
 
 def _harden(fd, path):
@@ -82,16 +79,15 @@ def _harden(fd, path):
         else:
             raise
 
+
 def _harden_windows(path: Path) -> None:
-    import win32security, ntsecuritycon # type: ignore
-    import win32api # type: ignore
+    import win32security, ntsecuritycon  # type: ignore
+    import win32api  # type: ignore
 
     sd = win32security.SECURITY_DESCRIPTOR()
     sd.SetSecurityDescriptorDacl(1, None, 0)  # type: ignore # NULL DACL == deny everyone
     # Then grant only the current user:
-    user, _domain, _type = win32security.LookupAccountName(
-        None, win32api.GetUserName()
-    )
+    user, _domain, _type = win32security.LookupAccountName(None, win32api.GetUserName())
     dacl = win32security.ACL()
     dacl.AddAccessAllowedAce(
         win32security.ACL_REVISION,
@@ -99,9 +95,8 @@ def _harden_windows(path: Path) -> None:
         user,
     )
     sd.SetSecurityDescriptorDacl(1, dacl, 0)
-    win32security.SetFileSecurity(
-        str(path), win32security.DACL_SECURITY_INFORMATION, sd
-    )
+    win32security.SetFileSecurity(str(path), win32security.DACL_SECURITY_INFORMATION, sd)
+
 
 def write_secret(path: Path, data: bytes, *, mode: int = 0o600) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -112,8 +107,8 @@ def write_secret(path: Path, data: bytes, *, mode: int = 0o600) -> str:
     try:
         if mode == 0o600:
             _harden(fd, str(path))
-        with os.fdopen(fd, "wb") as f:   # fdopen takes ownership of fd
-            fd = -1                      # so the except branch does not double-close
+        with os.fdopen(fd, "wb") as f:  # fdopen takes ownership of fd
+            fd = -1  # so the except branch does not double-close
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
@@ -131,23 +126,19 @@ def write_secret(path: Path, data: bytes, *, mode: int = 0o600) -> str:
     return str(path)
 
 
-
-
 @dataclass(frozen=True, slots=True)
 class CertFiles:
     cert_path: str
     key_path: str
-    spiffe_id: str 
-    trust_domain:str
+    spiffe_id: str
+    trust_domain: str
+
 
 @dataclass(frozen=True, slots=True)
 class LocalSSL:
-    spiffe_id: str 
+    spiffe_id: str
     server_ssl: ssl.SSLContext | None = None
     client_ssl: ssl.SSLContext | None = None
-
-
-
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,8 +146,6 @@ class Endpoint:
     host: str
     port: int
     spiffe_id: str
-
-
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,30 +156,31 @@ class NodeSpec:
     spiffe_id: str
     nodes: dict
     certs: CertFiles
-    trust_domain: str 
+    trust_domain: str
     server_ssl: ssl.SSLContext | None = None
     client_ssl: ssl.SSLContext | None = None
     enrollment_max_skew: int = 30
-    
+
     @property
     def name(self):
         return self.role
-    
-    @property 
+
+    @property
     def node_spiffe(self):
         return f"{SPIFFE_URI_PREFIX}{self.trust_domain}"
 
     def get_node_spiffe_id(self, name):
-        spiffe_id= self.nodes.get(name)
+        spiffe_id = self.nodes.get(name)
         if spiffe_id is None:
             raise ValueError("spiffe_id not register")
         return spiffe_id
 
     def allowd(self):
-        return authorize_one_of({ e for e in self.nodes.values()})
+        return authorize_one_of({e for e in self.nodes.values()})
 
     def server_adapter(self):
         from libs.transport.tls import make_adapter
+
         return make_adapter(
             peer_id=self.spiffe_id,
             trust_domain=self.trust_domain,
@@ -198,10 +188,11 @@ class NodeSpec:
             target_node_id=None,
         )
 
-    
-    
     def client_adapter(self, target_id):
         from libs.transport.tls import make_adapter
+
+        print(f"{target_id=}")
+        print(f"{self.nodes=}")
         spiffe_id = self.get_node_spiffe_id(target_id)
         return make_adapter(
             peer_id=self.spiffe_id,
@@ -209,7 +200,6 @@ class NodeSpec:
             authorize=authorize_id(spiffe_id),
             target_node_id=spiffe_id,
         )
-
 
 
 def _base_context(ctx: ssl.SSLContext) -> ssl.SSLContext:
@@ -238,15 +228,15 @@ def client_ssl_context(*, certfile: str, keyfile: str, cafile: str) -> ssl.SSLCo
 
 def issue_leaf(
     tmp_path: Path,
-    *, 
-    name: str, 
-    trust_domain: str, 
-    spiffe_id: str, 
-    ca_key, 
+    *,
+    name: str,
+    trust_domain: str,
+    spiffe_id: str,
+    ca_key,
     ca_cert,
     not_after_seconds: float | None = None,
 ) -> CertFiles:
-    
+
     key = ec.generate_private_key(ec.SECP256R1())
     now = datetime.now(UTC)
     not_after = (
@@ -269,14 +259,22 @@ def issue_leaf(
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
         .add_extension(
             x509.KeyUsage(
-                digital_signature=True, key_encipherment=True, content_commitment=False,
-                data_encipherment=False, key_agreement=False, key_cert_sign=False,
-                crl_sign=False, encipher_only=False, decipher_only=False,
+                digital_signature=True,
+                key_encipherment=True,
+                content_commitment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=False,
+                crl_sign=False,
+                encipher_only=False,
+                decipher_only=False,
             ),
             critical=True,
         )
         .add_extension(
-            x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH, ExtendedKeyUsageOID.CLIENT_AUTH]),
+            x509.ExtendedKeyUsage(
+                [ExtendedKeyUsageOID.SERVER_AUTH, ExtendedKeyUsageOID.CLIENT_AUTH]
+            ),
             critical=False,
         )
         .sign(ca_key, hashes.SHA256())
@@ -293,6 +291,7 @@ def issue_leaf(
         spiffe_id=spiffe_id,
         trust_domain=trust_domain,
     )
+
 
 def generate_node_ca(
     tmp_path: Path,
@@ -315,10 +314,12 @@ def generate_node_ca(
         not_before = now
         not_after = now + timedelta(days=validity_days)
 
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "local-org"),
-        x509.NameAttribute(NameOID.COMMON_NAME, node_id),
-    ])
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "local-org"),
+            x509.NameAttribute(NameOID.COMMON_NAME, node_id),
+        ]
+    )
     cert = (
         x509.CertificateBuilder()
         .subject_name(subject)
@@ -349,7 +350,6 @@ def generate_node_ca(
     return cert, key, cert_path
 
 
-
 class PKI:
     def __init__(
         self,
@@ -369,14 +369,15 @@ class PKI:
             not_after_seconds_from_now=ca_not_after_seconds_from_now,
         )
         self._nodes = {name: f"{self._node_spiffe}/{name}" for name in nodes}
+
     def get_node_spiffe_id(self, name):
-        spiffe_id= self._nodes.get(name)
+        spiffe_id = self._nodes.get(name)
         if spiffe_id is None:
             raise ValueError("spiffe_id not register")
         return spiffe_id
 
     def make_cert(self, name, agent_not_after_seconds: float | None = None) -> CertFiles:
-        spiffe_id= self.get_node_spiffe_id(name)
+        spiffe_id = self.get_node_spiffe_id(name)
         return issue_leaf(
             tmp_path=self.tmp_path,
             name=name,
@@ -387,9 +388,9 @@ class PKI:
             trust_domain=self.trust_domain,
         )
 
-    def make_node(self, name, host, port,  agent_not_after_seconds: float | None = None):
+    def make_node(self, name, host, port, agent_not_after_seconds: float | None = None):
 
-        spiffe_id= self.get_node_spiffe_id(name)
+        spiffe_id = self.get_node_spiffe_id(name)
         certs = self.make_cert(name, agent_not_after_seconds)
         server_ssl = server_ssl_context(
             certfile=certs.cert_path,
@@ -400,17 +401,15 @@ class PKI:
             certfile=certs.cert_path,
             keyfile=certs.key_path,
             cafile=self.ca_cert_path,
-        )   
+        )
         return NodeSpec(
             role=name,
             certs=certs,
             spiffe_id=spiffe_id,
-            host=host, 
+            host=host,
             port=port,
             server_ssl=server_ssl,
-            nodes= self._nodes,
+            nodes=self._nodes,
             trust_domain=self.trust_domain,
             client_ssl=client_ssl,
         )
-    
-

@@ -52,7 +52,6 @@ import os
 import ssl
 import sys
 import threading
-from typing import Optional
 
 log = logging.getLogger(__name__)
 
@@ -85,7 +84,7 @@ class ChannelBindingError(Exception):
         self.code = code
         self.detail = detail
 
- 
+
 # libssl discovery
 #
 # The single biggest hazard here is loading a *different* libssl than the one
@@ -123,8 +122,7 @@ def _loaded_libssl_paths() -> list[str]:
 
     try:
         if sys.platform.startswith("linux"):
-            with open("/proc/self/maps", "r",
-                      encoding="utf-8", errors="replace") as f:
+            with open("/proc/self/maps", encoding="utf-8", errors="replace") as f:
                 for line in f:
                     parts = line.rstrip("\n").split(None, 5)
                     if len(parts) < 6:
@@ -148,8 +146,7 @@ def _loaded_libssl_paths() -> list[str]:
                             _consider(raw.decode("utf-8", "replace"))
                     break  # success
                 except (AttributeError, OSError) as e:  # pragma: no cover
-                    log.debug("dyld enumeration via %r unavailable: %s",
-                              lib_name, e)
+                    log.debug("dyld enumeration via %r unavailable: %s", lib_name, e)
                     continue
     except Exception as e:  # pragma: no cover - best effort
         log.debug("could not enumerate loaded libssl: %s", e)
@@ -157,7 +154,7 @@ def _loaded_libssl_paths() -> list[str]:
     return paths
 
 
-def _try_cdll(path: str) -> Optional[ctypes.CDLL]:
+def _try_cdll(path: str) -> ctypes.CDLL | None:
     try:
         return ctypes.CDLL(path)
     except OSError as e:
@@ -181,8 +178,12 @@ def _load_windows() -> ctypes.CDLL:
 
     # Include ARM64 variants (Windows on ARM is a real deployment target).
     for name in (
-        "libssl-3", "libssl-3-x64", "libssl-3-arm64",
-        "libssl-1_1", "libssl-1_1-x64", "libssl-1_1-arm64",
+        "libssl-3",
+        "libssl-3-x64",
+        "libssl-3-arm64",
+        "libssl-1_1",
+        "libssl-1_1-x64",
+        "libssl-1_1-arm64",
     ):
         h = kernel32.GetModuleHandleW(name)
         if h:
@@ -193,14 +194,18 @@ def _load_windows() -> ctypes.CDLL:
                 log.warning("CDLL(%s, handle=%x) failed: %s", name, h, e)
 
     for name in (
-        "libssl-3-x64.dll", "libssl-3-arm64.dll", "libssl-3.dll",
-        "libssl-1_1-x64.dll", "libssl-1_1-arm64.dll", "libssl-1_1.dll",
+        "libssl-3-x64.dll",
+        "libssl-3-arm64.dll",
+        "libssl-3.dll",
+        "libssl-1_1-x64.dll",
+        "libssl-1_1-arm64.dll",
+        "libssl-1_1.dll",
     ):
         lib = _try_cdll(name)
         if lib is not None:
             log.warning(
-                "loaded libssl by name (%s); ensure this is the same DLL "
-                "used by the ssl module", name,
+                "loaded libssl by name (%s); ensure this is the same DLL used by the ssl module",
+                name,
             )
             return lib
 
@@ -232,7 +237,7 @@ def _load_posix() -> ctypes.CDLL:
     else:
         candidates += ["libssl.so.3", "libssl.so.1.1", "libssl.so"]
 
-    last_err: Optional[Exception] = None
+    last_err: Exception | None = None
     for name in candidates:
         try:
             lib = ctypes.CDLL(name)
@@ -241,18 +246,16 @@ def _load_posix() -> ctypes.CDLL:
             continue
         log.warning(
             "falling back to name lookup for libssl (%s); if this differs "
-            "from the libssl used by _ssl, the process may crash", name,
+            "from the libssl used by _ssl, the process may crash",
+            name,
         )
         return lib
 
-    raise ChannelBindingError(
-        "LIBSSL_NOT_FOUND", f"{last_err}. {_LOAD_HINT}"
-    )
+    raise ChannelBindingError("LIBSSL_NOT_FOUND", f"{last_err}. {_LOAD_HINT}")
 
 
-_ssl_lib: Optional[ctypes.CDLL] = None
+_ssl_lib: ctypes.CDLL | None = None
 _ssl_lib_lock = threading.Lock()
-
 
 
 def _get_ssl_lib() -> ctypes.CDLL:
@@ -279,19 +282,18 @@ def _configure_prototypes(lib: ctypes.CDLL) -> None:
     except AttributeError as e:
         raise ChannelBindingError(
             "EXPORT_FN_MISSING",
-            "libssl does not export SSL_export_keying_material "
-            "(OpenSSL >= 1.0.2 required)",
+            "libssl does not export SSL_export_keying_material (OpenSSL >= 1.0.2 required)",
         ) from e
 
     export.argtypes = [
-        ctypes.c_void_p,                    # SSL *s
-        ctypes.c_void_p,                    # unsigned char *out
-        ctypes.c_size_t,                    # size_t olen
-        ctypes.c_char_p,                    # const char *label
-        ctypes.c_size_t,                    # size_t llen
-        ctypes.c_char_p,                    # const unsigned char *context
-        ctypes.c_size_t,                    # size_t contextlen
-        ctypes.c_int,                       # int use_context
+        ctypes.c_void_p,  # SSL *s
+        ctypes.c_void_p,  # unsigned char *out
+        ctypes.c_size_t,  # size_t olen
+        ctypes.c_char_p,  # const char *label
+        ctypes.c_size_t,  # size_t llen
+        ctypes.c_char_p,  # const unsigned char *context
+        ctypes.c_size_t,  # size_t contextlen
+        ctypes.c_int,  # int use_context
     ]
     export.restype = ctypes.c_int
 
@@ -309,7 +311,7 @@ def _configure_prototypes(lib: ctypes.CDLL) -> None:
         fn.restype = restype
 
 
-# ================== SSL* extraction 
+# ================== SSL* extraction
 #
 # CPython Modules/_ssl.c declares PySSLSocket as (simplified):
 #
@@ -366,8 +368,7 @@ def _sanity_check_ssl(ptr: int) -> None:
             if not is_init(ptr):
                 raise ChannelBindingError(
                     "HANDSHAKE_INCOMPLETE",
-                    "TLS handshake has not completed; cannot export "
-                    "keying material",
+                    "TLS handshake has not completed; cannot export keying material",
                 )
         except ChannelBindingError:
             raise
@@ -386,9 +387,7 @@ def _sanity_check_ssl(ptr: int) -> None:
                 f"SSL_get_version failed on extracted pointer: {e}",
             ) from e
         if not version:
-            raise ChannelBindingError(
-                "SSL_PTR_INVALID", "SSL_get_version returned NULL"
-            )
+            raise ChannelBindingError("SSL_PTR_INVALID", "SSL_get_version returned NULL")
 
     # SSL_get_shutdown: non-zero once shutdown has been initiated.
     # https://www.openssl.org/docs/man3.0/man3/SSL_get_shutdown.html
@@ -404,10 +403,9 @@ def _sanity_check_ssl(ptr: int) -> None:
             pass
 
 
-
-
 def _coerce_bytes(
-    name: str, value: bytes | bytearray | str,
+    name: str,
+    value: bytes | bytearray | str,
 ) -> bytes:
     """Coerce a str/bytes/bytearray argument to bytes. Only ChannelBindingError
     escapes — callers must never see UnicodeEncodeError."""
@@ -421,14 +419,12 @@ def _coerce_bytes(
         except UnicodeEncodeError as e:
             raise ChannelBindingError(
                 "BAD_ARGUMENT",
-                f"{name} must be ASCII; rejected at {e.start}: "
-                f"{e.object[e.start:e.start+8]!r}",
+                f"{name} must be ASCII; rejected at {e.start}: {e.object[e.start : e.start + 8]!r}",
             ) from None
     raise ChannelBindingError(
         "BAD_ARGUMENT",
         f"{name} must be str or bytes, got {type(value).__name__}",
     )
-
 
 
 def native_exporter(
@@ -452,18 +448,21 @@ def native_exporter(
     Raises:
         ChannelBindingError: on any setup, precondition, or export failure.
     """
-    if not isinstance(length, int) or isinstance(length, bool) \
-            or not (_MIN_LENGTH <= length <= _MAX_LENGTH):
+    if (
+        not isinstance(length, int)
+        or isinstance(length, bool)
+        or not (_MIN_LENGTH <= length <= _MAX_LENGTH)
+    ):
         raise ChannelBindingError(
             "BAD_LENGTH",
-            f"length must be int in [{_MIN_LENGTH}, {_MAX_LENGTH}], "
-            f"got {length!r}",
+            f"length must be int in [{_MIN_LENGTH}, {_MAX_LENGTH}], got {length!r}",
         )
 
     label_b = _coerce_bytes("label", label)
     if not label_b:
         raise ChannelBindingError(
-            "BAD_LABEL", "label must not be empty",
+            "BAD_LABEL",
+            "label must not be empty",
         )
     # RFC 5705 §4: "The label must be a string literal (i.e., it must not
     # contain null bytes)." Embedded NULs would produce a different exporter
@@ -537,17 +536,11 @@ def libssl_version() -> str:
     return raw.decode("utf-8", "replace") if raw else "unknown"
 
 
-
-import ctypes
-
-_RAW_LEN = 32
-
-
 def derive_session_secrets(
     ssl_obj,
     *,
     alpn: str,
-    length: int = _RAW_LEN,
+    length: int = RFC9266_LENGTH,
     label: bytes = RFC9266_LABEL,
     context: bytes = RFC9266_CONTEXT,
     compile_session_secrets,
@@ -557,15 +550,15 @@ def derive_session_secrets(
     The raw exporter NEVER becomes a Python bytes object and never leaves
     this frame. On return, the C buffer holding it is zeroed.
     """
-    if length != _RAW_LEN:
+    if length != RFC9266_LENGTH:
         raise ChannelBindingError("BAD_LENGTH", "exporter length must be 32")
 
     lib = _get_ssl_lib()
-    out = ctypes.create_string_buffer(_RAW_LEN)   # mutable, zeroable
+    out = ctypes.create_string_buffer(RFC9266_LENGTH)  # mutable, zeroable
     try:
         # _ssl_pointer returns (inner, ptr); keeping `inner` referenced
         # prevents use-after-free during the C call.
-        inner, ptr = _ssl_pointer(ssl_obj) # type: ignore
+        inner, ptr = _ssl_pointer(ssl_obj)  # type: ignore
         _sanity_check_ssl(ptr)
 
         ctx_b = b"" if context is None else _coerce_bytes("context", context)
@@ -573,15 +566,20 @@ def derive_session_secrets(
         label_b = _coerce_bytes("label", label)
 
         rc = lib.SSL_export_keying_material(
-            ptr, out, _RAW_LEN,
-            label_b, len(label_b),
-            ctx_b, len(ctx_b), use_ctx,
+            ptr,
+            out,
+            RFC9266_LENGTH,
+            label_b,
+            len(label_b),
+            ctx_b,
+            len(ctx_b),
+            use_ctx,
         )
         if rc != 1:
             raise ChannelBindingError("EXPORT_FAILED", str(rc))
 
         # Split from the C buffer directly; no Python bytes copy.
-        mv = memoryview(out).cast("B")[:_RAW_LEN]
+        mv = memoryview(out).cast("B")[:RFC9266_LENGTH]
         try:
             return compile_session_secrets(mv, alpn=alpn)
         finally:
@@ -589,8 +587,9 @@ def derive_session_secrets(
             mv.release()
     finally:
         # Zero the C buffer even on exception.
-        ctypes.memset(out, 0, _RAW_LEN)
+        ctypes.memset(out, 0, RFC9266_LENGTH)
         del inner  # type: ignore # drop the last reference to the SSL object
+
 
 def self_tests():
     """Run every self-test. Prints progress; raises on first failure."""
@@ -617,7 +616,7 @@ def self_tests():
     PORT = 0
     ADD = (HOST, PORT)
 
-    # RFC 8446 §7.1 / §7.5 primitives 
+    # RFC 8446 §7.1 / §7.5 primitives
     #
     # RFC 8446 §7.1 — HKDF-Expand-Label:
     #     struct {
@@ -640,9 +639,7 @@ def self_tests():
         h.update(data)
         return h.finalize()
 
-    def _hkdf_expand_label(
-        hash_alg, secret, label: bytes, ctx_hash: bytes, out_len: int
-    ) -> bytes:
+    def _hkdf_expand_label(hash_alg, secret, label: bytes, ctx_hash: bytes, out_len: int) -> bytes:
         full_label = b"tls13 " + label
         if len(full_label) > 255:
             raise ValueError("label too long")
@@ -650,12 +647,12 @@ def self_tests():
             raise ValueError("context too long")
         info = (
             out_len.to_bytes(2, "big")
-            + bytes([len(full_label)]) + full_label
-            + bytes([len(ctx_hash)]) + ctx_hash
+            + bytes([len(full_label)])
+            + full_label
+            + bytes([len(ctx_hash)])
+            + ctx_hash
         )
-        return HKDFExpand(algorithm=hash_alg, length=out_len, info=info).derive(
-            secret
-        )
+        return HKDFExpand(algorithm=hash_alg, length=out_len, info=info).derive(secret)
 
     def hash_for_cipher(name: str):
         if name.endswith("_SHA384"):
@@ -673,20 +670,13 @@ def self_tests():
     ) -> bytes:
         hash_len = hash_algo.digest_size
         empty_hash = _hash(hash_algo, b"")
-        derived = _hkdf_expand_label(
-            hash_algo, exporter_master_secret, label, empty_hash, hash_len
-        )
+        derived = _hkdf_expand_label(hash_algo, exporter_master_secret, label, empty_hash, hash_len)
         ctx_hash = _hash(hash_algo, context)
-        return _hkdf_expand_label(
-            hash_algo, derived, b"exporter", ctx_hash, length
-        )
-
+        return _hkdf_expand_label(hash_algo, derived, b"exporter", ctx_hash, length)
 
     def make_self_signed():
         key = ec.generate_private_key(ec.SECP256R1())
-        subject = x509.Name(
-            [x509.NameAttribute(NameOID.COMMON_NAME, "cb-test")]
-        )
+        subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "cb-test")])
         now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
         cert = (
             x509.CertificateBuilder()
@@ -696,9 +686,7 @@ def self_tests():
             .serial_number(x509.random_serial_number())
             .not_valid_before(now)
             .not_valid_after(now + datetime.timedelta(hours=1))
-            .add_extension(
-                x509.BasicConstraints(ca=True, path_length=0), critical=True
-            )
+            .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
             .sign(key, hashes.SHA256())
         )
         d = tempfile.mkdtemp(prefix="cb-test")
@@ -716,9 +704,7 @@ def self_tests():
             )
         return cert_path, key_path
 
-    def make_ctx(
-        server_keylog: str, client_keylog: str
-    ) -> tuple[ssl.SSLContext, ssl.SSLContext]:
+    def make_ctx(server_keylog: str, client_keylog: str) -> tuple[ssl.SSLContext, ssl.SSLContext]:
         cert, key = make_self_signed()
 
         def mk(proto, keylog):
@@ -742,7 +728,7 @@ def self_tests():
         to look up the entry. This test has exactly one connection, so
         there is exactly one EXPORTER_SECRET line.
         """
-        with open(keylog_path, "r") as f:
+        with open(keylog_path) as f:
             for line in f:
                 parts = line.split()
                 if len(parts) == 3 and parts[0] == "EXPORTER_SECRET":
@@ -753,9 +739,7 @@ def self_tests():
         def __init__(self):
             self.server_keylog = tempfile.mkstemp(prefix="cb-srv-")[1]
             self.client_keylog = tempfile.mkstemp(prefix="cb-cli-")[1]
-            server_ctx, client_ctx = make_ctx(
-                self.server_keylog, self.client_keylog
-            )
+            server_ctx, client_ctx = make_ctx(self.server_keylog, self.client_keylog)
             self.ready = queue.Queue()
             self.result = {"release": threading.Event()}
             self._thread = threading.Thread(
@@ -819,7 +803,6 @@ def self_tests():
                 except Exception:
                     pass
 
-
     def test_matches_on_both_sides():
         with TLSSession() as s:
             cb_client = native_exporter(s.client_sock)
@@ -873,9 +856,7 @@ def self_tests():
         with TLSSession() as s:
             cb = native_exporter(s.client_sock)
         assert isinstance(cb, bytes), f"expected bytes, got {type(cb).__name__}"
-        assert len(cb) == RFC9266_LENGTH == 32, (
-            f"expected {RFC9266_LENGTH} bytes, got {len(cb)}"
-        )
+        assert len(cb) == RFC9266_LENGTH == 32, f"expected {RFC9266_LENGTH} bytes, got {len(cb)}"
 
     def test_before_handshake_raises():
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -947,10 +928,7 @@ def self_tests():
             print(f"  expected (computed): {expected.hex()}")
             print(f"  actual (client):     {actual_client.hex()}")
             print(f"  actual (server):     {actual_server.hex()}")
-            print(
-                f"  match:               "
-                f"{expected == actual_client == actual_server}"
-            )
+            print(f"  match:               {expected == actual_client == actual_server}")
             assert actual_client == expected, (
                 f"native_exporter produced the WRONG exporter value.\n"
                 f"  expected (RFC 8446 derivation): {expected.hex()}\n"
@@ -1046,26 +1024,21 @@ def self_tests():
             )
             if r.returncode != 0:
                 raise AssertionError(
-                    f"client subprocess failed:\n"
-                    f"stdout: {r.stdout}\nstderr: {r.stderr}"
+                    f"client subprocess failed:\nstdout: {r.stdout}\nstderr: {r.stderr}"
                 )
             client_outputs.append(bytes.fromhex(r.stdout.strip()))
 
         done.wait(timeout=5)
         srv.close()
 
-        assert len(server_cbs) == 2, (
-            f"server saw {len(server_cbs)} connections"
-        )
+        assert len(server_cbs) == 2, f"server saw {len(server_cbs)} connections"
         for i, (cb_cli, cb_srv) in enumerate(zip(client_outputs, server_cbs)):
             assert cb_cli == cb_srv, (
                 f"process boundary broke CB agreement on connection {i}:\n"
                 f"  client: {cb_cli.hex()}\n"
                 f"  server: {cb_srv.hex()}"
             )
-        assert client_outputs[0] != client_outputs[1], (
-            "two separate clients produced the same CB"
-        )
+        assert client_outputs[0] != client_outputs[1], "two separate clients produced the same CB"
 
     def test_asyncio_ssl_object_matches_rfc8446():
         fd, keylog = tempfile.mkstemp(prefix="cb-keylog")
@@ -1114,14 +1087,8 @@ def self_tests():
                         break
             assert ems, "no EXPORTER_SECRET in keylog"
 
-            h = (
-                hashes.SHA384()
-                if "SHA384" in got["cipher"]
-                else hashes.SHA256()
-            )
-            expected = rfc8446_exporter(
-                ems, RFC9266_LABEL, RFC9266_CONTEXT, RFC9266_LENGTH, h
-            )
+            h = hashes.SHA384() if "SHA384" in got["cipher"] else hashes.SHA256()
+            expected = rfc8446_exporter(ems, RFC9266_LABEL, RFC9266_CONTEXT, RFC9266_LENGTH, h)
             actual_client = got["client"]
             actual_server = got["server"]
             cipher_name = got["cipher"]
@@ -1131,10 +1098,7 @@ def self_tests():
             print(f"  expected (computed): {expected.hex()}")
             print(f"  actual (client):     {actual_client.hex()}")
             print(f"  actual (server):     {actual_server.hex()}")
-            print(
-                f"  match:               "
-                f"{expected == actual_client == actual_server}"
-            )
+            print(f"  match:               {expected == actual_client == actual_server}")
 
             assert actual_client == expected, (
                 f"native_exporter produced the WRONG exporter value.\n"
@@ -1156,15 +1120,13 @@ def self_tests():
             for c in (sctx, cctx):
                 if c is not None:
                     try:
-                        c.keylog_filename = None # type: ignore
+                        c.keylog_filename = None  # type: ignore
                     except Exception:
                         pass
             try:
                 os.unlink(keylog)
             except OSError as e:
-                log.warning(
-                    "could not unlink %s; temp file leaked: %s", keylog, e
-                )
+                log.warning("could not unlink %s; temp file leaked: %s", keylog, e)
 
     test_matches_on_both_sides()
     test_deterministic_on_same_session()

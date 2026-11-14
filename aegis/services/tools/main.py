@@ -17,16 +17,15 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Awaitable, Callable, Iterable, Protocol, Sequence
 
 
-
 from identity import (
-    bootstrap, 
-    Bootstrap, 
-    IdentitySnapshot, 
-    SSLContextHolder, 
-    SVIDMaterial, 
-    SVIDWatcher, 
-    IdentityService, 
-    IdentityError
+    bootstrap,
+    Bootstrap,
+    IdentitySnapshot,
+    SSLContextHolder,
+    SVIDMaterial,
+    SVIDWatcher,
+    IdentityService,
+    IdentityError,
 )
 
 log = logging.getLogger("aegis.node")
@@ -50,14 +49,13 @@ async def main() -> None:
     async def on_rotate(snap: IdentitySnapshot) -> None:
         line("ROTATE", snap)
 
-
     def on(s):
-         asyncio.create_task(on_rotate(s))
-    
+        asyncio.create_task(on_rotate(s))
+
     boot.identity.subscribe(on)
 
     try:
-        await asyncio.Event().wait()          # run forever
+        await asyncio.Event().wait()  # run forever
     finally:
         await boot.stop()
 

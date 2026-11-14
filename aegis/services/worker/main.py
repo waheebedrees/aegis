@@ -17,22 +17,15 @@ from dataclasses import dataclass, field
 
 from libs.capchain.checkpoint import check_contract, Stores, migrate
 from libs.agentid.identity import (
-    bootstrap, 
-    Bootstrap, 
-    IdentitySnapshot, 
-    SSLContextHolder, 
-    SVIDMaterial, 
-    SVIDWatcher, 
-    IdentityService, 
-    IdentityError
+    bootstrap,
+    Bootstrap,
+    IdentitySnapshot,
+    SSLContextHolder,
+    SVIDMaterial,
+    SVIDWatcher,
+    IdentityService,
+    IdentityError,
 )
-
-
-
-
-
-
-
 
 
 log = logging.getLogger("aegis.node")
@@ -46,14 +39,7 @@ def line(tag: str, snap: IdentitySnapshot) -> None:
         f"bundle={snap.bundle_digest[7:19]}… "
         f"remain={snap.remain:6.1f}s",
         flush=True,
-
-        
     )
-
-
-
-
-
 
 
 async def selftest() -> int:
@@ -67,12 +53,11 @@ async def selftest() -> int:
             print(f"  [FAIL] memory: {type(e).__name__}: {e}")
 
     url = "redis://:your_redis_password@redis:6379/0"
-    url = os.environ['CAPCHAIN_REDIS_URL']
+    url = os.environ["CAPCHAIN_REDIS_URL"]
     print(f"{os.environ['CAPCHAIN_REDIS_PREFIX']=}")
     print(f"{os.environ['CAPCHAIN_REDIS_URL']=}")
 
     if url:
-
         prefix = f"capchain:test:{uuid.uuid4().hex}"
         try:
             async with await Stores.open(
@@ -106,9 +91,6 @@ async def selftest() -> int:
     return failures
 
 
-
-
-
 async def main() -> None:
     boot = await bootstrap(watch=True)
     line("initial", boot.identity.current)
@@ -116,14 +98,13 @@ async def main() -> None:
     async def on_rotate(snap: IdentitySnapshot) -> None:
         line("ROTATE", snap)
 
-
     def on(s):
-         asyncio.create_task(on_rotate(s))
-    
+        asyncio.create_task(on_rotate(s))
+
     boot.identity.subscribe(on)
 
     try:
-        await asyncio.Event().wait()          # run forever
+        await asyncio.Event().wait()  # run forever
     finally:
         await boot.stop()
 

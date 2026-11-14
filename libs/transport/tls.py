@@ -12,19 +12,19 @@ Fail-closed rules:
     chunks back at us.
 """
 
-
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
-from datetime import UTC, timezone
 import hashlib
 import hmac
 import ssl
 import time
-from cryptography import x509
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
+from datetime import UTC
+from typing import Protocol, runtime_checkable
 
-from typing import Callable, Optional, Protocol, runtime_checkable
+from cryptography import x509
 
 __all__ = [
     "ALPN",
@@ -45,7 +45,6 @@ __all__ = [
     "cert_validity",
     "extract_spiffe_id",
     "split_exporter",
-    
 ]
 
 
@@ -57,7 +56,7 @@ SPIFFE_URI_PREFIX = "spiffe://"
 
 # RFC 9266 section 3 channel-binding exporter parameters.
 EXPORTER_LABEL = b"EXPORTER-Channel-Binding"
-EXPORTER_CONTEXT = b""          # RFC 9266: empty context, use_context=1
+EXPORTER_CONTEXT = b""  # RFC 9266: empty context, use_context=1
 EXPORTER_LENGTH = 32
 
 SUPPORTED_TLS_VERSIONS: frozenset[str] = frozenset({"TLSv1.3"})
@@ -68,6 +67,34 @@ _MAX_TRUST_DOMAIN = 255
 
 Authorizer = Callable[[str], bool]
 
+
+def authorize_id(spiffe_id: str) -> Authorizer:
+    """Accept exactly one SPIFFE ID. Use for client dialing one known server."""
+    if not spiffe_id.startswith("spiffe://"):
+        raise ValueError(f"not a spiffe id: {spiffe_id!r}")
+    return lambda peer: peer == spiffe_id
+
+
+def authorize_one_of(ids: Iterable[str]) -> Authorizer:
+    """Accept any of a fixed set. Use for server with N known nodes."""
+    allowed = frozenset(ids)
+    if not allowed:
+        raise ValueError("empty allowlist; use authorize_member_of or accept nothing explicitly")
+    for i in allowed:
+        if not i.startswith("spiffe://"):
+            raise ValueError(f"not a spiffe id: {i!r}")
+    return lambda peer: peer in allowed
+
+
+def authorize_member_of(trust_domain: str) -> Authorizer:
+    """Accept any workload in a trust domain. e.g. 'spiffe://aegis-test'."""
+    td = trust_domain.rstrip("/")
+    if not td.startswith("spiffe://"):
+        raise ValueError(f"not a trust domain: {trust_domain!r}")
+    prefix = td + "/"
+    return lambda peer: peer.startswith(prefix)
+
+
 class TransportSetupError(Exception):
     __slots__ = ("code", "detail")
 
@@ -75,6 +102,7 @@ class TransportSetupError(Exception):
         super().__init__(f"{code}: {detail}" if detail else code)
         self.code = code
         self.detail = detail
+
 
 @dataclass(frozen=True, slots=True)
 class TlsPolicy:
@@ -108,14 +136,11 @@ class TlsPolicy:
 DEFAULT_TLS_POLICY = TlsPolicy()
 
 
-
-
 @runtime_checkable
 class PeerVerifier(Protocol):
     """Local peer-certificate verifier."""
 
     def verify_peer(self, cert: x509.Certificate) -> str: ...
-
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,7 +163,6 @@ class SessionSecrets:
         return self.stream_ikm_s2c, self.stream_ikm_c2s
 
 
-
 def cert_validity(cert: x509.Certificate) -> tuple[float, float]:
     """Return (not_before, not_after) as POSIX UTC seconds."""
     try:
@@ -157,9 +181,10 @@ def _parse_spiffe_uri(uri: str) -> tuple[str, str]:
     if len(uri) > _MAX_SPIFFE_URI or any(ord(c) <= 0x20 or ord(c) >= 0x7F for c in uri):
         raise TransportSetupError("invalid characters or length in SPIFFE ID")
     if "?" in uri or "#" in uri or "@" in uri or "%" in uri:
-        raise TransportSetupError("SPIFFE ID must not contain userinfo, escapes, "
-                                  "query, or fragment")
-    rest = uri[len(SPIFFE_URI_PREFIX):]
+        raise TransportSetupError(
+            "SPIFFE ID must not contain userinfo, escapes, query, or fragment"
+        )
+    rest = uri[len(SPIFFE_URI_PREFIX) :]
     trust_domain, sep, path = rest.partition("/")
     if not trust_domain or len(trust_domain) > _MAX_TRUST_DOMAIN or not sep or not path:
         raise TransportSetupError("SPIFFE ID requires trust domain and workload path")
@@ -187,7 +212,6 @@ def extract_spiffe_id(cert: x509.Certificate) -> str:
         raise TransportSetupError(f"expected exactly one SPIFFE URI SAN, got {len(ids)}")
     _parse_spiffe_uri(ids[0])
     return ids[0]
-
 
 
 def split_exporter(raw_exporter: bytes, *, alpn: str = ALPN) -> SessionSecrets:
@@ -249,22 +273,15 @@ def _derive_session_secrets(
         salt = b"aegis-exporter-root-v4:" + alpn.encode("ascii")
         prk = hmac.new(salt, bytes(scratch), hashlib.sha256).digest()
         return SessionSecrets(
-            channel_binding=hmac.new(
-                prk, b"aegis-cb-v4\x01", hashlib.sha256
-            ).digest(),
-            stream_ikm_c2s=hmac.new(
-                prk, b"aegis-stream-c2s-v4\x02", hashlib.sha256
-            ).digest(),
-            stream_ikm_s2c=hmac.new(
-                prk, b"aegis-stream-s2c-v4\x03", hashlib.sha256
-            ).digest(),
+            channel_binding=hmac.new(prk, b"aegis-cb-v4\x01", hashlib.sha256).digest(),
+            stream_ikm_c2s=hmac.new(prk, b"aegis-stream-c2s-v4\x02", hashlib.sha256).digest(),
+            stream_ikm_s2c=hmac.new(prk, b"aegis-stream-s2c-v4\x03", hashlib.sha256).digest(),
         )
     finally:
         # Zero the buffer we own. `prk` is `bytes` and cannot be scrubbed,
         # but it goes out of scope when this frame exits. The three derived
         # outputs are the only secrets that leave this function.
         scratch[:] = b"\x00" * EXPORTER_LENGTH
-
 
 
 @dataclass(frozen=True, slots=True)
@@ -294,8 +311,7 @@ class SpiffeAdapter:
         td, _ = _parse_spiffe_uri(f"{SPIFFE_URI_PREFIX}{self.trust_domain}/_")
         if td != self.trust_domain:
             raise ValueError(
-                f"trust_domain must be a bare lowercase authority: "
-                f"{self.trust_domain!r}"
+                f"trust_domain must be a bare lowercase authority: {self.trust_domain!r}"
             )
 
         if self.target_node_id is not None:
@@ -308,13 +324,11 @@ class SpiffeAdapter:
     def check_trust_domain(self, spiffe_id: str) -> str:
         td, _ = _parse_spiffe_uri(spiffe_id)
         if td != self.trust_domain:
-            raise TransportSetupError(
-                f"trust domain {td!r} != expected {self.trust_domain!r}"
-            )
+            raise TransportSetupError(f"trust domain {td!r} != expected {self.trust_domain!r}")
         return td
 
     def verify_peer(self, cert: x509.Certificate) -> str:
-        spiffe_id = extract_spiffe_id(cert)          # already URI-validated
+        spiffe_id = extract_spiffe_id(cert)  # already URI-validated
         self.check_trust_domain(spiffe_id)
 
         # Self-loop: both sides are now guaranteed to be full SPIFFE IDs,
@@ -331,15 +345,13 @@ class SpiffeAdapter:
         try:
             allowed = self.authorize(spiffe_id)
         except Exception as exc:
-            raise TransportSetupError(
-                f"authorizer raised {type(exc).__name__}"
-            ) from None
+            raise TransportSetupError(f"authorizer raised {type(exc).__name__}") from None
         if allowed is not True:
             raise TransportSetupError(f"peer not authorized: {spiffe_id!r}")
 
         return spiffe_id
 
-    
+
 def make_adapter(
     peer_id: str,
     authorize: Authorizer,
@@ -353,7 +365,7 @@ def make_adapter(
         authorize=authorize,
         trust_domain=trust_domain,
     )
-    
+
 
 @dataclass(frozen=True, slots=True)
 class TlsConnection:
@@ -382,12 +394,13 @@ class TlsConnection:
         *,
         adapter: PeerVerifier,
         policy: TlsPolicy = DEFAULT_TLS_POLICY,
-        now: Optional[float] = None,
-    ) -> "TlsConnection":
+        now: float | None = None,
+    ) -> TlsConnection:
         """Verify a completed TLS handshake; close the writer on any failure."""
         try:
             return cls._verify(
-                reader, writer,
+                reader,
+                writer,
                 adapter=adapter,
                 policy=policy,
                 now=time.time() if now is None else now,
@@ -409,12 +422,13 @@ class TlsConnection:
         *,
         adapter: PeerVerifier,
         policy: TlsPolicy = DEFAULT_TLS_POLICY,
-        now: Optional[float] = None,
-    ) -> "TlsConnection":
+        now: float | None = None,
+    ) -> TlsConnection:
         """Async variant of wrap that also awaits transport close on failure."""
         try:
             return cls.wrap(
-                reader, writer,
+                reader,
+                writer,
                 adapter=adapter,
                 policy=policy,
                 now=now,
@@ -435,17 +449,17 @@ class TlsConnection:
         adapter: PeerVerifier,
         policy: TlsPolicy,
         now: float,
-    ) -> "TlsConnection":
+    ) -> TlsConnection:
         """Check order, cheapest first, no fail-open branch:
-            1. TLS present and a cipher negotiated (handshake complete)
-            2. Cipher not on the forbidden list
-            3. TLS version in the allowed set
-            4. ALPN negotiated and allowed
-            5. Context inspectable AND CERT_REQUIRED
-            6. Stack reports a verified peer certificate (dict + DER)
-            7. Certificate validity window with bounded skew
-            8. Peer identity, trust domain, ACL, expected-peer pin
-            9. Exporter extraction and one-way split; raw exporter discarded
+        1. TLS present and a cipher negotiated (handshake complete)
+        2. Cipher not on the forbidden list
+        3. TLS version in the allowed set
+        4. ALPN negotiated and allowed
+        5. Context inspectable AND CERT_REQUIRED
+        6. Stack reports a verified peer certificate (dict + DER)
+        7. Certificate validity window with bounded skew
+        8. Peer identity, trust domain, ACL, expected-peer pin
+        9. Exporter extraction and one-way split; raw exporter discarded
         """
         if not isinstance(adapter, PeerVerifier):
             raise TransportSetupError("adapter must implement verify_peer")
@@ -473,8 +487,7 @@ class TlsConnection:
         negotiated_alpn = sslsock.selected_alpn_protocol()
         if negotiated_alpn is None or negotiated_alpn not in policy.allowed_alpns:
             raise TransportSetupError(
-                f"ALPN mismatch: got {negotiated_alpn!r}, "
-                f"allowed {policy.allowed_alpns!r}"
+                f"ALPN mismatch: got {negotiated_alpn!r}, allowed {policy.allowed_alpns!r}"
             )
 
         # 5. Strict mTLS context mode. Missing context is fatal, not skipped:
@@ -519,7 +532,6 @@ class TlsConnection:
         # 9. Exporter split. The raw exporter never leaves this frame.
         secrets_ = _derive_session_secrets(sslsock, policy, negotiated_alpn)
 
-
         return cls(
             reader=reader,
             writer=writer,
@@ -531,9 +543,3 @@ class TlsConnection:
             not_before=not_before,
             not_after=not_after,
         )
-
-    
-
-
-
-

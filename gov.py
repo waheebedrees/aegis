@@ -180,7 +180,6 @@ import libs.capchain.capchain as cc
 
 from config.governance import (
     ConfigError,
-
     _PEER_NAME,
     compile_document,
     load_node_config,
@@ -222,8 +221,7 @@ KEY_BYTES = 32
 
 def _require_32(raw: bytes) -> bytes:
     if len(raw) != KEY_BYTES:
-        raise ValueError(
-            f"ed25519 public key must be {KEY_BYTES} bytes, got {len(raw)}")
+        raise ValueError(f"ed25519 public key must be {KEY_BYTES} bytes, got {len(raw)}")
     return raw
 
 
@@ -242,6 +240,7 @@ def _encode(raw: bytes, scheme: str = "raw_b64") -> str:
 # ═════════════════════════════════════════════════════════════════════════
 # governance.toml: load / save
 # ═════════════════════════════════════════════════════════════════════════
+
 
 def _load(path: Path) -> dict:
     """Read governance.toml with keys still in wire (b64) form.
@@ -279,6 +278,7 @@ def _load_decoded(path: Path) -> dict:
 # governance.toml: render / write
 # ═════════════════════════════════════════════════════════════════════════
 
+
 def _fmt_time(v: Any) -> str:
     """Render a timestamp as an unquoted TOML datetime, always UTC-Z."""
     if isinstance(v, dt.datetime):
@@ -288,19 +288,17 @@ def _fmt_time(v: Any) -> str:
         return s
     if s.endswith("+00:00"):
         return s[:-6] + "Z"
-    raise ConfigError(
-        f"{v!r}: timestamps must be UTC (end with 'Z' or '+00:00')")
+    raise ConfigError(f"{v!r}: timestamps must be UTC (end with 'Z' or '+00:00')")
 
 
 def _enc_scope(s: dict) -> str:
     parts = [
-        'tools = [' + ", ".join(f'"{t}"' for t in s["tools"]) + ']',
-        f'budget = {s["budget"]}',
-        'audience = [' + ", ".join(f'"{a}"' for a in s["audience"]) + ']',
+        "tools = [" + ", ".join(f'"{t}"' for t in s["tools"]) + "]",
+        f"budget = {s['budget']}",
+        "audience = [" + ", ".join(f'"{a}"' for a in s["audience"]) + "]",
     ]
     if s.get("domains"):
-        parts.append('domains = ['
-                     + ", ".join(f'"{d}"' for d in s["domains"]) + ']')
+        parts.append("domains = [" + ", ".join(f'"{d}"' for d in s["domains"]) + "]")
     return "{ " + ", ".join(parts) + " }"
 
 
@@ -308,11 +306,11 @@ def _enc_cost(c: dict, *, with_tool: bool) -> str:
     parts = []
     if with_tool:
         parts.append(f'tool = "{c["tool"]}"')
-    parts.append(f'base_micros = {c["base_micros"]}')
+    parts.append(f"base_micros = {c['base_micros']}")
     if c.get("per_kib_micros"):
-        parts.append(f'per_kib_micros = {c["per_kib_micros"]}')
+        parts.append(f"per_kib_micros = {c['per_kib_micros']}")
     if c.get("max_micros") is not None:
-        parts.append(f'max_micros = {c["max_micros"]}')
+        parts.append(f"max_micros = {c['max_micros']}")
     return "{ " + ", ".join(parts) + " }"
 
 
@@ -321,9 +319,9 @@ def _render(doc: dict) -> str:
     L: list[str] = [
         "# Managed by scripts/gov.py — do not hand-edit.",
         "",
-        f'version = {doc["version"]}',
-        f'not_before = {_fmt_time(doc["not_before"])}',
-        f'expires_at = {_fmt_time(doc["expires_at"])}',
+        f"version = {doc['version']}",
+        f"not_before = {_fmt_time(doc['not_before'])}",
+        f"expires_at = {_fmt_time(doc['expires_at'])}",
         "",
         "[trust]",
         "roots = [",
@@ -333,25 +331,23 @@ def _render(doc: dict) -> str:
         L.append(f'  {{ issuer = "{r["issuer"]}", keys = [{keys}] }},')
     L.append("]")
     if "enrollment" in doc["trust"]:
-        L.append(
-            f'enrollment = "{_encode(doc["trust"]["enrollment"], "raw_b64")}"')
+        L.append(f'enrollment = "{_encode(doc["trust"]["enrollment"], "raw_b64")}"')
     L.append("")
 
     p = doc["policy"]
     L += [
         "[policy]",
-        f'max_depth = {p["max_depth"]}',
-        'models = [' + ", ".join(f'"{m}"' for m in p["models"]) + ']',
-        'peer_bound_tools = ['
-        + ", ".join(f'"{t}"' for t in p.get("peer_bound_tools", [])) + ']',
+        f"max_depth = {p['max_depth']}",
+        "models = [" + ", ".join(f'"{m}"' for m in p["models"]) + "]",
+        "peer_bound_tools = [" + ", ".join(f'"{t}"' for t in p.get("peer_bound_tools", [])) + "]",
         "edges = [",
     ]
     for e in p["edges"]:
         L.append(
             f'  {{ parent = "{e["parent"]}", child = "{e["child"]}", '
-            f'max_ttl = {e["max_ttl"]}, '
-            f'max_children = {e["max_children"]}, '
-            f'ceiling = {_enc_scope(e["ceiling"])} }},'
+            f"max_ttl = {e['max_ttl']}, "
+            f"max_children = {e['max_children']}, "
+            f"ceiling = {_enc_scope(e['ceiling'])} }},"
         )
     L.append("]")
     L.append("")
@@ -360,10 +356,10 @@ def _render(doc: dict) -> str:
         L += [
             "[[issuance]]",
             f'holder = "{r["holder"]}"',
-            f'ttl = {r["ttl"]}',
-            f'max_depth = {r["max_depth"]}',
+            f"ttl = {r['ttl']}",
+            f"max_depth = {r['max_depth']}",
             f'model = "{r["model"]}"',
-            f'scope = {_enc_scope(r["scope"])}',
+            f"scope = {_enc_scope(r['scope'])}",
             "",
         ]
 
@@ -372,20 +368,19 @@ def _render(doc: dict) -> str:
         L += [
             "[enrollment]",
             f'may_enroll = "{e["may_enroll"]}"',
-            f'ttl = {e["ttl"]}',
+            f"ttl = {e['ttl']}",
             f'model = "{e["model"]}"',
-            f'ceiling = {_enc_scope(e["ceiling"])}',
+            f"ceiling = {_enc_scope(e['ceiling'])}",
             "",
         ]
 
     L.append("[pricing]")
     L.append("rules = [")
     for r in doc["pricing"]["rules"]:
-        L.append(f'  {_enc_cost(r, with_tool=True)},')
+        L.append(f"  {_enc_cost(r, with_tool=True)},")
     L.append("]")
     if doc["pricing"].get("default"):
-        L.append(
-            f'default = {_enc_cost(doc["pricing"]["default"], with_tool=False)}')
+        L.append(f"default = {_enc_cost(doc['pricing']['default'], with_tool=False)}")
     L.append("")
     return "\n".join(L)
 
@@ -403,6 +398,7 @@ def _save(path: Path, doc: dict) -> None:
 # ═════════════════════════════════════════════════════════════════════════
 # Key generation
 # ═════════════════════════════════════════════════════════════════════════
+
 
 def _generate_keypair(pub_path: Path, seed_path: Path) -> None:
     """Write a fresh Ed25519 keypair. Seed is chmod 0600; pub is 0644."""
@@ -431,14 +427,15 @@ def _generate_keypair(pub_path: Path, seed_path: Path) -> None:
 # Argument helpers
 # ═════════════════════════════════════════════════════════════════════════
 
+
 def _split(s: str) -> list[str]:
     return [x.strip() for x in s.split(",") if x.strip()]
 
 
 def _scope_from_args(args: argparse.Namespace, prefix: str) -> dict:
     s = {
-        "tools":    _split(getattr(args, f"{prefix}_tools") or ""),
-        "budget":   getattr(args, f"{prefix}_budget"),
+        "tools": _split(getattr(args, f"{prefix}_tools") or ""),
+        "budget": getattr(args, f"{prefix}_budget"),
         "audience": _split(getattr(args, f"{prefix}_audience") or ""),
     }
     if d := getattr(args, f"{prefix}_domains", None):
@@ -447,19 +444,18 @@ def _scope_from_args(args: argparse.Namespace, prefix: str) -> dict:
 
 
 def _add_scope_args(sp: argparse.ArgumentParser, prefix: str) -> None:
-    sp.add_argument(f"--{prefix}-tools", required=True,
-                    help="comma-separated tool ids")
-    sp.add_argument(f"--{prefix}-budget", type=int, required=True,
-                    help="budget in micros")
-    sp.add_argument(f"--{prefix}-audience", required=True,
-                    help="comma-separated audience spiffe ids")
-    sp.add_argument(f"--{prefix}-domains", default="",
-                    help="optional comma-separated domains")
+    sp.add_argument(f"--{prefix}-tools", required=True, help="comma-separated tool ids")
+    sp.add_argument(f"--{prefix}-budget", type=int, required=True, help="budget in micros")
+    sp.add_argument(
+        f"--{prefix}-audience", required=True, help="comma-separated audience spiffe ids"
+    )
+    sp.add_argument(f"--{prefix}-domains", default="", help="optional comma-separated domains")
 
 
 # ═════════════════════════════════════════════════════════════════════════
 # Command: gen-keys
 # ═════════════════════════════════════════════════════════════════════════
+
 
 def cmd_gen_keys(args: argparse.Namespace) -> int:
     """Generate authority, issuer, enrollment, and per-agent keypairs.
@@ -473,8 +469,8 @@ def cmd_gen_keys(args: argparse.Namespace) -> int:
     """
     base = Path(args.dir)
     pairs = [
-        (base / "authority.pub",  base / "authority.seed"),
-        (base / "issuer.pub",     base / "issuer.seed"),
+        (base / "authority.pub", base / "authority.seed"),
+        (base / "issuer.pub", base / "issuer.seed"),
         (base / "enrollment.pub", base / "enrollment.seed"),
     ]
     for name in _split(args.agents):
@@ -482,8 +478,7 @@ def cmd_gen_keys(args: argparse.Namespace) -> int:
 
     for pub, seed in pairs:
         if (pub.exists() or seed.exists()) and not args.force:
-            log.error("%s or %s exists (pass --force to regenerate)",
-                      pub, seed)
+            log.error("%s or %s exists (pass --force to regenerate)", pub, seed)
             return 2
 
     for pub, seed in pairs:
@@ -496,6 +491,7 @@ def cmd_gen_keys(args: argparse.Namespace) -> int:
 # ═════════════════════════════════════════════════════════════════════════
 # Command: init
 # ═════════════════════════════════════════════════════════════════════════
+
 
 def cmd_init(args: argparse.Namespace) -> int:
     """Create a fresh governance.toml.
@@ -545,9 +541,9 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 _REQUIRED_PEERS: dict[str, set[str]] = {
     "gateway": {"tool"},
-    "issuer":  set(),
-    "agent":   {"gateway", "parent"},
-    "tool":    {"gateway"},
+    "issuer": set(),
+    "agent": {"gateway", "parent"},
+    "tool": {"gateway"},
 }
 
 
@@ -571,8 +567,7 @@ def _parse_peer(spec: str) -> tuple[str, dict]:
     if not spiffe.startswith("spiffe://"):
         raise ValueError(f"peer {name}: spiffe_id must start with spiffe://")
     if not _PEER_NAME.fullmatch(name):
-        raise ValueError(
-            f"peer {name}: name must match [a-z][a-z0-9._-]{{0,31}}")
+        raise ValueError(f"peer {name}: name must match [a-z][a-z0-9._-]{{0,31}}")
     return name, {"host": host, "port": port, "spiffe_id": spiffe}
 
 
@@ -590,35 +585,35 @@ def _render_node_toml(d: dict) -> str:
         f'cert_file     = "{p(d["tls"]["cert_file"])}"',
         f'key_file      = "{p(d["tls"]["key_file"])}"',
         f'ca_file       = "{p(d["tls"]["ca_file"])}"',
-        'trust_domains = ['
-        + ", ".join(f'"{x}"' for x in d["tls"]["trust_domains"]) + "]",
+        "trust_domains = [" + ", ".join(f'"{x}"' for x in d["tls"]["trust_domains"]) + "]",
         "",
         "[governance]",
         f'bundle_file             = "{p(d["governance"]["bundle_file"])}"',
         f'state_file              = "{p(d["governance"]["state_file"])}"',
-        'authority_keys          = ['
-        + ", ".join(f'"{k}"' for k in d["governance"]["authority_keys"]) + "]",
-        f'reload_interval_seconds = {d["governance"]["reload_interval_seconds"]}',
-        f'min_version             = {d["governance"]["min_version"]}',
+        "authority_keys          = ["
+        + ", ".join(f'"{k}"' for k in d["governance"]["authority_keys"])
+        + "]",
+        f"reload_interval_seconds = {d['governance']['reload_interval_seconds']}",
+        f"min_version             = {d['governance']['min_version']}",
         "",
     ]
     if "listen" in d:
-        L += ["[listen]",
-              f'host = "{d["listen"]["host"]}"',
-              f'port = {d["listen"]["port"]}', ""]
+        L += ["[listen]", f'host = "{d["listen"]["host"]}"', f"port = {d['listen']['port']}", ""]
     if "stores" in d:
         L += ["[stores]", f'backend = "{d["stores"]["backend"]}"', ""]
     for name in sorted(d.get("peers", {})):
         e = d["peers"][name]
-        L += [f"[peers.{name}]",
-              f'host      = "{e["host"]}"',
-              f'port      = {e["port"]}',
-              f'spiffe_id = "{e["spiffe_id"]}"', ""]
+        L += [
+            f"[peers.{name}]",
+            f'host      = "{e["host"]}"',
+            f"port      = {e['port']}",
+            f'spiffe_id = "{e["spiffe_id"]}"',
+            "",
+        ]
     if "key" in d:
         L += ["[key]", f'seed_file = "{p(d["key"]["seed_file"])}"', ""]
     if "issuer" in d:
-        L += ["[issuer]",
-              f'root_seed_file = "{p(d["issuer"]["root_seed_file"])}"', ""]
+        L += ["[issuer]", f'root_seed_file = "{p(d["issuer"]["root_seed_file"])}"', ""]
     return "\n".join(L)
 
 
@@ -646,8 +641,7 @@ def cmd_gen_node(args: argparse.Namespace) -> int:
     key = Path(args.key) if args.key else Path("certs") / f"{name}.key"
     ca = Path(args.ca)
     bundle = Path(args.bundle)
-    state = Path(args.state) if args.state else \
-        Path("state") / f"{name}.governance.state"
+    state = Path(args.state) if args.state else Path("state") / f"{name}.governance.state"
 
     if "://" not in args.spiffe_id:
         log.error("--spiffe-id: bad format %r", args.spiffe_id)
@@ -692,10 +686,10 @@ def cmd_gen_node(args: argparse.Namespace) -> int:
 
     stores = args.stores_backend if role in ("gateway", "issuer") else None
 
-    workload_seed = (Path(args.workload_seed) if args.workload_seed
-                     else Path("keys") / f"{name}.seed")
-    governor_seed = (Path(args.governor_seed) if args.governor_seed
-                     else Path("keys") / "issuer.seed")
+    workload_seed = (
+        Path(args.workload_seed) if args.workload_seed else Path("keys") / f"{name}.seed"
+    )
+    governor_seed = Path(args.governor_seed) if args.governor_seed else Path("keys") / "issuer.seed"
 
     if args.gen_seed:
         if role != "agent":
@@ -748,14 +742,15 @@ def cmd_gen_node(args: argparse.Namespace) -> int:
     except ConfigError as exc:
         log.warning("not yet loadable: %s", exc)
         log.warning(
-            "  (normal during bootstrapping — generate certs and sign the "
-            "bundle, then re-check)")
+            "  (normal during bootstrapping — generate certs and sign the bundle, then re-check)"
+        )
     return 0
 
 
 # ═════════════════════════════════════════════════════════════════════════
 # Commands: show / validate / sign
 # ═════════════════════════════════════════════════════════════════════════
+
 
 def cmd_show(args: argparse.Namespace) -> int:
     """Summarize governance.toml. Read-only — does not modify the file."""
@@ -768,20 +763,20 @@ def cmd_show(args: argparse.Namespace) -> int:
     for r in doc["trust"]["roots"]:
         log.info("issuer      = %s", r["issuer"])
         for k in r["keys"]:
-            log.info("  key       = %s  (sha256=%s..)",
-                     _encode(k, "raw_b64"), thumbprint(k)[:16])
+            log.info("  key       = %s  (sha256=%s..)", _encode(k, "raw_b64"), thumbprint(k)[:16])
     if "enrollment" in doc["trust"]:
         k = doc["trust"]["enrollment"]
-        log.info("enrollment  = %s  (sha256=%s..)",
-                 _encode(k, "raw_b64"), thumbprint(k)[:16])
+        log.info("enrollment  = %s  (sha256=%s..)", _encode(k, "raw_b64"), thumbprint(k)[:16])
     log.info("max_depth   = %s", doc["policy"]["max_depth"])
     log.info("models      = %s", doc["policy"]["models"])
     log.info("edges       = %d", len(doc["policy"]["edges"]))
     log.info("issuance    = %d rule(s)", len(doc.get("issuance", [])))
     log.info("enrollment  = %s", "set" if doc.get("enrollment") else "unset")
-    log.info("pricing     = %d rule(s), default=%s",
-             len(doc["pricing"]["rules"]),
-             "yes" if doc["pricing"].get("default") else "no")
+    log.info(
+        "pricing     = %d rule(s), default=%s",
+        len(doc["pricing"]["rules"]),
+        "yes" if doc["pricing"].get("default") else "no",
+    )
     return 0
 
 
@@ -814,14 +809,16 @@ def cmd_sign(args: argparse.Namespace) -> int:
 
     try:
         current = cc.CapChainKey.from_seed(load_seed(Path(args.key)))
-        nxt = (cc.CapChainKey.from_seed(load_seed(Path(args.next_key)))
-               if args.next_key else None)
+        nxt = cc.CapChainKey.from_seed(load_seed(Path(args.next_key))) if args.next_key else None
     except (OSError, ValueError) as exc:
         log.error("key error: %s", exc)
         return 2
 
-    raw = (sign_bundle_with_rotation(doc, current, nxt)
-           if nxt is not None else sign_bundle(doc, current))
+    raw = (
+        sign_bundle_with_rotation(doc, current, nxt)
+        if nxt is not None
+        else sign_bundle(doc, current)
+    )
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -829,14 +826,14 @@ def cmd_sign(args: argparse.Namespace) -> int:
     tmp.write_bytes(raw)
     tmp.replace(out)
 
-    log.info("✓ signed → %s (%d bytes)%s",
-             out, len(raw), " [rotation]" if nxt is not None else "")
+    log.info("✓ signed → %s (%d bytes)%s", out, len(raw), " [rotation]" if nxt is not None else "")
     return 0
 
 
 # ═════════════════════════════════════════════════════════════════════════
 # Commands: issuers
 # ═════════════════════════════════════════════════════════════════════════
+
 
 def cmd_set_issuer(args: argparse.Namespace) -> int:
     """Manage the trust-root set (``[trust].roots``)."""
@@ -934,6 +931,7 @@ def cmd_set_policy(args: argparse.Namespace) -> int:
 # Commands: edges
 # ═════════════════════════════════════════════════════════════════════════
 
+
 def cmd_add_edge(args: argparse.Namespace) -> int:
     """Append a delegation edge ``(parent → child, ceiling, max_ttl)``.
 
@@ -941,17 +939,18 @@ def cmd_add_edge(args: argparse.Namespace) -> int:
     wildcard edge is added before a specific one, the wildcard wins.
     """
     doc = _load_decoded(Path(args.file))
-    if any(e["parent"] == args.parent and e["child"] == args.child
-           for e in doc["policy"]["edges"]):
+    if any(e["parent"] == args.parent and e["child"] == args.child for e in doc["policy"]["edges"]):
         log.error("edge already exists")
         return 2
-    doc["policy"]["edges"].append({
-        "parent": args.parent,
-        "child": args.child,
-        "max_ttl": args.max_ttl,
-        "max_children": args.max_children,
-        "ceiling": _scope_from_args(args, "ceiling"),
-    })
+    doc["policy"]["edges"].append(
+        {
+            "parent": args.parent,
+            "child": args.child,
+            "max_ttl": args.max_ttl,
+            "max_children": args.max_children,
+            "ceiling": _scope_from_args(args, "ceiling"),
+        }
+    )
     _save(Path(args.file), doc)
     log.info("✓ added edge %s → %s", args.parent, args.child)
     return 0
@@ -962,7 +961,8 @@ def cmd_remove_edge(args: argparse.Namespace) -> int:
     doc = _load_decoded(Path(args.file))
     before = len(doc["policy"]["edges"])
     doc["policy"]["edges"] = [
-        e for e in doc["policy"]["edges"]
+        e
+        for e in doc["policy"]["edges"]
         if not (e["parent"] == args.parent and e["child"] == args.child)
     ]
     if len(doc["policy"]["edges"]) == before:
@@ -977,6 +977,7 @@ def cmd_remove_edge(args: argparse.Namespace) -> int:
 # Commands: issuance
 # ═════════════════════════════════════════════════════════════════════════
 
+
 def cmd_add_issuance(args: argparse.Namespace) -> int:
     """Append an issuance rule ``[[issuance]]``.
 
@@ -989,13 +990,15 @@ def cmd_add_issuance(args: argparse.Namespace) -> int:
     if any(r["holder"] == args.holder for r in doc.get("issuance", [])):
         log.error("issuance for %s exists", args.holder)
         return 2
-    doc.setdefault("issuance", []).append({
-        "holder": args.holder,
-        "ttl": args.ttl,
-        "max_depth": args.max_depth,
-        "model": args.model,
-        "scope": _scope_from_args(args, "scope"),
-    })
+    doc.setdefault("issuance", []).append(
+        {
+            "holder": args.holder,
+            "ttl": args.ttl,
+            "max_depth": args.max_depth,
+            "model": args.model,
+            "scope": _scope_from_args(args, "scope"),
+        }
+    )
     _save(Path(args.file), doc)
     log.info("✓ added issuance for %s", args.holder)
     return 0
@@ -1005,8 +1008,7 @@ def cmd_remove_issuance(args: argparse.Namespace) -> int:
     """Remove every issuance rule whose holder matches exactly."""
     doc = _load_decoded(Path(args.file))
     before = len(doc.get("issuance", []))
-    doc["issuance"] = [r for r in doc.get("issuance", [])
-                       if r["holder"] != args.holder]
+    doc["issuance"] = [r for r in doc.get("issuance", []) if r["holder"] != args.holder]
     if len(doc["issuance"]) == before:
         log.error("issuance for %s not found", args.holder)
         return 2
@@ -1019,18 +1021,21 @@ def cmd_remove_issuance(args: argparse.Namespace) -> int:
 # Commands: pricing
 # ═════════════════════════════════════════════════════════════════════════
 
+
 def cmd_add_pricing(args: argparse.Namespace) -> int:
     """Append an exact or ``namespace:*`` pricing rule."""
     doc = _load_decoded(Path(args.file))
     if any(r["tool"] == args.tool for r in doc["pricing"]["rules"]):
         log.error("pricing for %s exists", args.tool)
         return 2
-    doc["pricing"]["rules"].append({
-        "tool": args.tool,
-        "base_micros": args.base,
-        "per_kib_micros": args.per_kib,
-        "max_micros": args.max,
-    })
+    doc["pricing"]["rules"].append(
+        {
+            "tool": args.tool,
+            "base_micros": args.base,
+            "per_kib_micros": args.per_kib,
+            "max_micros": args.max,
+        }
+    )
     _save(Path(args.file), doc)
     log.info("✓ added pricing for %s", args.tool)
     return 0
@@ -1040,8 +1045,7 @@ def cmd_remove_pricing(args: argparse.Namespace) -> int:
     """Remove a pricing rule by exact tool name."""
     doc = _load_decoded(Path(args.file))
     before = len(doc["pricing"]["rules"])
-    doc["pricing"]["rules"] = [r for r in doc["pricing"]["rules"]
-                               if r["tool"] != args.tool]
+    doc["pricing"]["rules"] = [r for r in doc["pricing"]["rules"] if r["tool"] != args.tool]
     if len(doc["pricing"]["rules"]) == before:
         log.error("pricing for %s not found", args.tool)
         return 2
@@ -1071,21 +1075,18 @@ def cmd_set_default_pricing(args: argparse.Namespace) -> int:
 # argparse / main
 # ═════════════════════════════════════════════════════════════════════════
 
+
 def _build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="gov.py")
-    ap.add_argument("--file", default="config/governance.toml",
-                    help="path to governance.toml")
-    ap.add_argument("-v", "--verbose", action="store_true",
-                    help="debug logging")
+    ap.add_argument("--file", default="config/governance.toml", help="path to governance.toml")
+    ap.add_argument("-v", "--verbose", action="store_true", help="debug logging")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     # ─ init ─
     sp = sub.add_parser("init", help="create a fresh governance.toml")
-    sp.add_argument("--issuer-key", required=True,
-                    help="issuer PUBLIC key (governor)")
+    sp.add_argument("--issuer-key", required=True, help="issuer PUBLIC key (governor)")
     sp.add_argument("--issuer-spiffe", required=True)
-    sp.add_argument("--enrollment-key", required=True,
-                    help="enrollment PUBLIC key")
+    sp.add_argument("--enrollment-key", required=True, help="enrollment PUBLIC key")
     sp.add_argument("--not-before", required=True)
     sp.add_argument("--expires-at", required=True)
     sp.add_argument("--out", default="config/governance.toml")
@@ -1095,54 +1096,42 @@ def _build_parser() -> argparse.ArgumentParser:
     # ─ gen-keys ─
     sp = sub.add_parser("gen-keys", help="generate Ed25519 keypairs")
     sp.add_argument("--dir", default="keys")
-    sp.add_argument("--agents", default="",
-                    help="comma-separated agent names, e.g. node-2,node-3")
+    sp.add_argument("--agents", default="", help="comma-separated agent names, e.g. node-2,node-3")
     sp.add_argument("--force", action="store_true")
     sp.set_defaults(func=cmd_gen_keys)
 
     # ─ gen-node ─
     sp = sub.add_parser("gen-node", help="generate a node-*.toml")
-    sp.add_argument("--name", required=True,
-                    help="short name (defaults for paths and peer names)")
-    sp.add_argument("--role", required=True,
-                    choices=["gateway", "issuer", "agent", "tool"])
+    sp.add_argument("--name", required=True, help="short name (defaults for paths and peer names)")
+    sp.add_argument("--role", required=True, choices=["gateway", "issuer", "agent", "tool"])
     sp.add_argument("--spiffe-id", required=True)
-    sp.add_argument("--environment", default="development",
-                    choices=["development", "production"])
-    sp.add_argument("--listen",
-                    help="HOST:PORT (required for gateway/issuer/tool)")
-    sp.add_argument("--peer", action="append", default=[],
-                    metavar="NAME=HOST:PORT@SPIFFE_ID")
+    sp.add_argument("--environment", default="development", choices=["development", "production"])
+    sp.add_argument("--listen", help="HOST:PORT (required for gateway/issuer/tool)")
+    sp.add_argument("--peer", action="append", default=[], metavar="NAME=HOST:PORT@SPIFFE_ID")
     sp.add_argument("--authority", default="keys/authority.pub")
     sp.add_argument("--bundle", default="config/governance.bundle")
     sp.add_argument("--cert", help="default: certs/{name}.crt")
     sp.add_argument("--key", help="default: certs/{name}.key")
     sp.add_argument("--ca", default="certs/ca.crt")
     sp.add_argument("--state", help="default: state/{name}.governance.state")
-    sp.add_argument("--workload-seed",
-                    help="agent only (default: keys/{name}.seed)")
-    sp.add_argument("--governor-seed",
-                    help="issuer only (default: keys/issuer.seed)")
-    sp.add_argument("--stores-backend", default="memory",
-                    choices=["memory", "redis", "database"])
-    sp.add_argument("--gen-seed", action="store_true",
-                    help="agent: generate workload keypair if missing")
+    sp.add_argument("--workload-seed", help="agent only (default: keys/{name}.seed)")
+    sp.add_argument("--governor-seed", help="issuer only (default: keys/issuer.seed)")
+    sp.add_argument("--stores-backend", default="memory", choices=["memory", "redis", "database"])
+    sp.add_argument(
+        "--gen-seed", action="store_true", help="agent: generate workload keypair if missing"
+    )
     sp.add_argument("--out", help="default: config/node-{name}.toml")
     sp.add_argument("--force", action="store_true")
     sp.set_defaults(func=cmd_gen_node)
 
     # ─ read-only ─
-    sub.add_parser("show", help="summarize governance.toml") \
-        .set_defaults(func=cmd_show)
-    sub.add_parser("validate", help="validate governance.toml") \
-        .set_defaults(func=cmd_validate)
+    sub.add_parser("show", help="summarize governance.toml").set_defaults(func=cmd_show)
+    sub.add_parser("validate", help="validate governance.toml").set_defaults(func=cmd_validate)
 
     # ─ sign ─
     sp = sub.add_parser("sign", help="compile and sign the bundle")
-    sp.add_argument("--key", required=True,
-                    help="path to current authority SEED")
-    sp.add_argument("--next-key", default=None,
-                    help="path to next authority SEED (rotation)")
+    sp.add_argument("--key", required=True, help="path to current authority SEED")
+    sp.add_argument("--next-key", default=None, help="path to next authority SEED (rotation)")
     sp.add_argument("--out", required=True)
     sp.set_defaults(func=cmd_sign)
 

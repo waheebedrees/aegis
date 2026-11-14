@@ -39,13 +39,10 @@ import asyncio
 import enum
 import math
 import struct
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import (
-    Callable,
-    Iterable,
-    Mapping,
-    Optional,
     Protocol,
     TypeGuard,
     Union,
@@ -132,15 +129,15 @@ _TYPE_LEN = 1
 _FLAGS_LEN = 2
 _STREAM_ID_LEN = 4
 _LEN_LEN = 4
-PROLOGUE_LEN = _TYPE_LEN + _FLAGS_LEN + _STREAM_ID_LEN + _LEN_LEN   # 11
-FIXED_OVERHEAD = PROLOGUE_LEN + _LEN_LEN                            # 15
+PROLOGUE_LEN = _TYPE_LEN + _FLAGS_LEN + _STREAM_ID_LEN + _LEN_LEN  # 11
+FIXED_OVERHEAD = PROLOGUE_LEN + _LEN_LEN  # 15
 
-MAX_CHUNK_BYTES = 256 * 1024          # keep in sync with capchain/streams.py
-STREAM_MAC_BYTES = 32                 # HMAC-SHA256
+MAX_CHUNK_BYTES = 256 * 1024  # keep in sync with capchain/streams.py
+STREAM_MAC_BYTES = 32  # HMAC-SHA256
 MAX_FRAME_BYTES = FIXED_OVERHEAD + 8 + MAX_CHUNK_BYTES + STREAM_MAC_BYTES
 MAX_BODY_BYTES = MAX_FRAME_BYTES - FIXED_OVERHEAD
 
-OPEN_MAX_TOKEN = 4 * 1024             # was 32 KiB: bounds per-stream retention
+OPEN_MAX_TOKEN = 4 * 1024  # was 32 KiB: bounds per-stream retention
 OPEN_MAX_POP = 1 * 1024
 OPEN_MAX_BODY = 4 * 1024
 HELLO_MAX_BODY = 64
@@ -158,15 +155,15 @@ WRITE_TIMEOUT = 30.0
 CLOSE_TIMEOUT = 5.0
 
 
-DATA_MAX_BODY  = 4 * 1024          # matches OPEN_MAX_BODY
-DATA_MAX_TOKEN = OPEN_MAX_TOKEN    # 4 KiB
-DATA_MAX_POP   = OPEN_MAX_POP      # 1 KiB
+DATA_MAX_BODY = 4 * 1024  # matches OPEN_MAX_BODY
+DATA_MAX_TOKEN = OPEN_MAX_TOKEN  # 4 KiB
+DATA_MAX_POP = OPEN_MAX_POP  # 1 KiB
 
 
 _U16 = struct.Struct(">H")
 _U32 = struct.Struct(">I")
 _U64 = struct.Struct(">Q")
-_PROLOGUE = struct.Struct(">BHII")     # type, flags, stream_id, token_len
+_PROLOGUE = struct.Struct(">BHII")  # type, flags, stream_id, token_len
 
 assert _PROLOGUE.size == PROLOGUE_LEN
 
@@ -175,6 +172,7 @@ _ERR_LEN = struct.Struct(">H")
 
 
 # ───────────────────────── helpers ─────────────────────────
+
 
 def _is_int(value: object) -> TypeGuard[int]:
     return type(value) is int
@@ -188,10 +186,9 @@ def _safe_ascii(text: str, limit: int) -> bytes:
     """Lossy-map to printable ASCII minus quote/backslash, then truncate."""
     if not isinstance(text, str):
         raise FrameError("BAD_TEXT", type(text).__name__)
-    return "".join(
-        c if 0x20 <= ord(c) < 0x7F and c not in ('"', "\\") else "_"
-        for c in text
-    )[:limit].encode("ascii")
+    return "".join(c if 0x20 <= ord(c) < 0x7F and c not in ('"', "\\") else "_" for c in text)[
+        :limit
+    ].encode("ascii")
 
 
 def _is_printable_ascii(raw: bytes) -> bool:
@@ -221,8 +218,9 @@ class StreamCloseError(Exception):
 
 # ───────────────────────── types & registry ─────────────────────────
 
+
 class StreamIdRule(enum.Enum):
-    ZERO = "zero"        # session-level (stream_id == 0)
+    ZERO = "zero"  # session-level (stream_id == 0)
     NONZERO = "nonzero"  # stream-level  (1 <= stream_id <= MAX_STREAM_ID)
 
 
@@ -323,9 +321,11 @@ class FrameSpec:
         if not self.min_token <= token_len <= self.max_token:
             raise FrameError("BAD_TOKEN_LEN", f"{self.name}: {token_len}")
         base = FIXED_OVERHEAD + token_len
-        if not (base + self.min_pop + self.min_body
-                <= payload_len
-                <= base + self.max_pop + self.max_body):
+        if not (
+            base + self.min_pop + self.min_body
+            <= payload_len
+            <= base + self.max_pop + self.max_body
+        ):
             raise FrameError("BAD_PAYLOAD_LEN", f"{self.name}: {payload_len}")
 
     def validate(self, frame: Frame) -> None:
@@ -364,7 +364,7 @@ class FrameRegistry:
             raise ValueError("registry must define at least one frame type")
         self._specs: Mapping[int, FrameSpec] = MappingProxyType(table)
 
-    def get(self, type_id: int) -> Optional[FrameSpec]:
+    def get(self, type_id: int) -> FrameSpec | None:
         return self._specs.get(type_id)
 
     def require(self, type_id: int) -> FrameSpec:
@@ -373,10 +373,10 @@ class FrameRegistry:
             raise FrameError("UNKNOWN_TYPE", f"0x{type_id:02x}")
         return spec
 
-    def extend(self, *specs: FrameSpec) -> "FrameRegistry":
+    def extend(self, *specs: FrameSpec) -> FrameRegistry:
         return FrameRegistry((*self._specs.values(), *specs))
 
-    def replace(self, *specs: FrameSpec) -> "FrameRegistry":
+    def replace(self, *specs: FrameSpec) -> FrameRegistry:
         merged = dict(self._specs)
         for spec in specs:
             if not isinstance(spec, FrameSpec):
@@ -395,7 +395,7 @@ class FrameType:
     PONG = 0x07
     CLOSE = 0x08
     ERROR = 0x09
-    DATA          = 0x0A
+    DATA = 0x0A
 
     @staticmethod
     def name(type_id: int) -> str:
@@ -409,41 +409,56 @@ class FrameType:
 
 # Every registered type is dispatched by the session layer. There are no
 # decodable-but-unroutable frame types (no dead surface).
-DEFAULT_REGISTRY = FrameRegistry((
-    FrameSpec(FrameType.SESSION_INIT, "SESSION_INIT",
-              min_body=1, max_body=HELLO_MAX_BODY),
-
-    FrameSpec(FrameType.DATA, "DATA",
-          max_body=DATA_MAX_BODY,
-          max_token=DATA_MAX_TOKEN,
-          max_pop=DATA_MAX_POP,
-          allowed_flags=Flags.NONE,
-          stream_id_rule=StreamIdRule.ZERO),
-
-
-    FrameSpec(FrameType.OPEN_STREAM, "OPEN_STREAM",
-              min_body=3, max_body=OPEN_MAX_BODY,
-              max_token=OPEN_MAX_TOKEN, max_pop=OPEN_MAX_POP,
-              stream_id_rule=StreamIdRule.NONZERO),
-    FrameSpec(FrameType.STREAM_DATA, "STREAM_DATA",
-              min_body=8, max_body=8 + MAX_CHUNK_BYTES,
-              min_pop=STREAM_MAC_BYTES, max_pop=STREAM_MAC_BYTES,
-              allowed_flags=Flags.FIN,
-              stream_id_rule=StreamIdRule.NONZERO),
-    FrameSpec(FrameType.WINDOW_UPDATE, "WINDOW_UPDATE",
-              min_body=4, max_body=4,
-              stream_id_rule=StreamIdRule.NONZERO),
-    FrameSpec(FrameType.CANCEL, "CANCEL",
-              max_body=MAX_REASON_BYTES,
-              stream_id_rule=StreamIdRule.NONZERO),
-    FrameSpec(FrameType.PING, "PING",
-              min_body=PING_NONCE_BYTES, max_body=PING_NONCE_BYTES),
-    FrameSpec(FrameType.PONG, "PONG",
-              min_body=PING_NONCE_BYTES, max_body=PING_NONCE_BYTES),
-    FrameSpec(FrameType.CLOSE, "CLOSE", max_body=MAX_REASON_BYTES),
-    FrameSpec(FrameType.ERROR, "ERROR", max_body=256),
-
-))
+DEFAULT_REGISTRY = FrameRegistry(
+    (
+        FrameSpec(FrameType.SESSION_INIT, "SESSION_INIT", min_body=1, max_body=HELLO_MAX_BODY),
+        FrameSpec(
+            FrameType.DATA,
+            "DATA",
+            max_body=DATA_MAX_BODY,
+            max_token=DATA_MAX_TOKEN,
+            max_pop=DATA_MAX_POP,
+            allowed_flags=Flags.NONE,
+            stream_id_rule=StreamIdRule.ZERO,
+        ),
+        FrameSpec(
+            FrameType.OPEN_STREAM,
+            "OPEN_STREAM",
+            min_body=3,
+            max_body=OPEN_MAX_BODY,
+            max_token=OPEN_MAX_TOKEN,
+            max_pop=OPEN_MAX_POP,
+            stream_id_rule=StreamIdRule.NONZERO,
+        ),
+        FrameSpec(
+            FrameType.STREAM_DATA,
+            "STREAM_DATA",
+            min_body=8,
+            max_body=8 + MAX_CHUNK_BYTES,
+            min_pop=STREAM_MAC_BYTES,
+            max_pop=STREAM_MAC_BYTES,
+            allowed_flags=Flags.FIN,
+            stream_id_rule=StreamIdRule.NONZERO,
+        ),
+        FrameSpec(
+            FrameType.WINDOW_UPDATE,
+            "WINDOW_UPDATE",
+            min_body=4,
+            max_body=4,
+            stream_id_rule=StreamIdRule.NONZERO,
+        ),
+        FrameSpec(
+            FrameType.CANCEL,
+            "CANCEL",
+            max_body=MAX_REASON_BYTES,
+            stream_id_rule=StreamIdRule.NONZERO,
+        ),
+        FrameSpec(FrameType.PING, "PING", min_body=PING_NONCE_BYTES, max_body=PING_NONCE_BYTES),
+        FrameSpec(FrameType.PONG, "PONG", min_body=PING_NONCE_BYTES, max_body=PING_NONCE_BYTES),
+        FrameSpec(FrameType.CLOSE, "CLOSE", max_body=MAX_REASON_BYTES),
+        FrameSpec(FrameType.ERROR, "ERROR", max_body=256),
+    )
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -456,6 +471,7 @@ class StreamChunk:
 
 
 # ───────────────────────── constructors & parsers ─────────────────────────
+
 
 def make_session_init(body: bytes) -> Frame:
     if not _is_bytes(body) or not 1 <= len(body) <= HELLO_MAX_BODY:
@@ -475,14 +491,15 @@ def make_error(code: str, detail: str = "") -> Frame:
     """
     if not isinstance(code, str):
         raise FrameError("BAD_CODE", type(code).__name__)
-    safe_code = "".join(
-        c for c in code if c.isascii() and (c.isalnum() or c == "_")
-    )[:_MAX_ERR_CODE] or "INTERNAL"
+    safe_code = (
+        "".join(c for c in code if c.isascii() and (c.isalnum() or c == "_"))[:_MAX_ERR_CODE]
+        or "INTERNAL"
+    )
     code_b = safe_code.encode("ascii")
 
-    detail_safe = "".join(
-        c if 0x20 <= ord(c) <= 0x7E else "_" for c in str(detail)[:256]
-    ).encode("ascii")
+    detail_safe = "".join(c if 0x20 <= ord(c) <= 0x7E else "_" for c in str(detail)[:256]).encode(
+        "ascii"
+    )
 
     # ERROR FrameSpec: max_body=256, so code_b + detail + 2 must fit
     room = 256 - 2 - len(code_b)
@@ -493,6 +510,7 @@ def make_error(code: str, detail: str = "") -> Frame:
         body=_ERR_LEN.pack(len(code_b)) + code_b + detail_b,
     )
 
+
 def parse_error_body(body: bytes) -> tuple[str, str]:
     if not isinstance(body, (bytes, bytearray, memoryview)):
         raise FrameError("BAD_ERR_BODY", type(body).__name__)
@@ -502,8 +520,8 @@ def parse_error_body(body: bytes) -> tuple[str, str]:
     (n,) = _ERR_LEN.unpack_from(raw, 0)
     if not 1 <= n <= _MAX_ERR_CODE or 2 + n > len(raw):
         raise FrameError("BAD_ERR_BODY", f"code_len={n}")
-    code = raw[2:2 + n]
-    detail = raw[2 + n:]
+    code = raw[2 : 2 + n]
+    detail = raw[2 + n :]
     if not all(0x20 <= b <= 0x7E for b in detail):
         raise FrameError("BAD_ERR_DETAIL")
     try:
@@ -511,7 +529,6 @@ def parse_error_body(body: bytes) -> tuple[str, str]:
     except UnicodeDecodeError:
         raise FrameError("BAD_ERR_CODE") from None
 
-    
 
 def parse_reason(body: bytes, *, field: str = "reason") -> str:
     """Strictly decode a CLOSE/CANCEL reason. Rejects non-printable bytes."""
@@ -533,8 +550,12 @@ def _check_kind(kind: str) -> bytes:
 
 
 def make_open_stream(
-    *, stream_id: int, kind: str, payload: bytes = b"",
-    token: bytes = b"", pop: bytes = b"",
+    *,
+    stream_id: int,
+    kind: str,
+    payload: bytes = b"",
+    token: bytes = b"",
+    pop: bytes = b"",
 ) -> Frame:
     """OPEN_STREAM body: u16be(len(kind)) || kind_ascii || initial_payload."""
     if not _is_int(stream_id) or not 0 < stream_id <= MAX_STREAM_ID:
@@ -560,10 +581,10 @@ def parse_open_stream_body(body: bytes) -> tuple[str, bytes]:
     kind_len = _U16.unpack_from(body, 0)[0]
     if not 1 <= kind_len <= 64 or 2 + kind_len > len(body):
         raise FrameError("BAD_KIND")
-    raw_kind = body[2:2 + kind_len]
+    raw_kind = body[2 : 2 + kind_len]
     if any(b <= 0x20 or b >= 0x7F for b in raw_kind):
         raise FrameError("BAD_KIND")
-    return raw_kind.decode("ascii"), body[2 + kind_len:]
+    return raw_kind.decode("ascii"), body[2 + kind_len :]
 
 
 def parse_open_stream(
@@ -600,9 +621,7 @@ def make_stream_data(
     )
 
 
-def parse_stream_data(
-    frame: Frame, *, registry: FrameRegistry = DEFAULT_REGISTRY
-) -> StreamChunk:
+def parse_stream_data(frame: Frame, *, registry: FrameRegistry = DEFAULT_REGISTRY) -> StreamChunk:
     if frame.type != FrameType.STREAM_DATA:
         raise FrameError("BAD_TYPE", FrameType.name(frame.type))
     registry.require(FrameType.STREAM_DATA).validate(frame)
@@ -613,9 +632,7 @@ def parse_stream_data(
     fin = bool(frame.flags & Flags.FIN)
     if not data and not fin:
         raise FrameError("EMPTY_CHUNK")
-    return StreamChunk(
-        stream_id=frame.stream_id, seq=seq, data=data, mac=frame.pop, fin=fin
-    )
+    return StreamChunk(stream_id=frame.stream_id, seq=seq, data=data, mac=frame.pop, fin=fin)
 
 
 def make_window_update(*, stream_id: int, credits: int) -> Frame:
@@ -623,9 +640,7 @@ def make_window_update(*, stream_id: int, credits: int) -> Frame:
         raise FrameError("BAD_STREAM_ID", repr(stream_id))
     if not _is_int(credits) or not 1 <= credits <= MAX_WINDOW_CREDIT:
         raise FrameError("BAD_CREDITS", repr(credits))
-    return Frame(
-        type=FrameType.WINDOW_UPDATE, stream_id=stream_id, body=_U32.pack(credits)
-    )
+    return Frame(type=FrameType.WINDOW_UPDATE, stream_id=stream_id, body=_U32.pack(credits))
 
 
 def parse_window_update(
@@ -670,9 +685,8 @@ def fits(token: bytes, pop: bytes, body_len: int, max_frame: int) -> bool:
 
 # ───────────────────────── codec ─────────────────────────
 
-def _decode_tail(
-    prologue: bytes, tail: bytes, payload_len: int, spec: FrameSpec
-) -> Frame:
+
+def _decode_tail(prologue: bytes, tail: bytes, payload_len: int, spec: FrameSpec) -> Frame:
     type_id, flags, stream_id, token_len = _PROLOGUE.unpack(prologue)
     if len(tail) != payload_len - PROLOGUE_LEN:
         raise FrameError("LENGTH_MISMATCH")
@@ -697,25 +711,23 @@ def _decode_tail(
     return frame
 
 
-def encode_frame(
-    frame: Frame, *, registry: FrameRegistry = DEFAULT_REGISTRY
-) -> bytes:
+def encode_frame(frame: Frame, *, registry: FrameRegistry = DEFAULT_REGISTRY) -> bytes:
     if not isinstance(frame, Frame):
         raise FrameError("BAD_FRAME")
     registry.require(frame.type).validate(frame)
-    return b"".join((
-        _U32.pack(frame.payload_len),
-        _PROLOGUE.pack(frame.type, frame.flags, frame.stream_id, len(frame.token)),
-        frame.token,
-        _U32.pack(len(frame.pop)),
-        frame.pop,
-        frame.body,
-    ))
+    return b"".join(
+        (
+            _U32.pack(frame.payload_len),
+            _PROLOGUE.pack(frame.type, frame.flags, frame.stream_id, len(frame.token)),
+            frame.token,
+            _U32.pack(len(frame.pop)),
+            frame.pop,
+            frame.body,
+        )
+    )
 
 
-def decode_frame(
-    data: object, *, registry: FrameRegistry = DEFAULT_REGISTRY
-) -> Frame:
+def decode_frame(data: object, *, registry: FrameRegistry = DEFAULT_REGISTRY) -> Frame:
     """Decode exactly one complete wire frame. Raises only FrameError."""
     if type(data) is bytes:
         raw = data
@@ -743,14 +755,17 @@ def decode_frame(
     if len(raw) != HEADER_LEN + payload_len:
         raise FrameError("LENGTH_MISMATCH")
 
-    prologue = raw[HEADER_LEN:HEADER_LEN + PROLOGUE_LEN]
+    prologue = raw[HEADER_LEN : HEADER_LEN + PROLOGUE_LEN]
     type_id, flags, stream_id, token_len = _PROLOGUE.unpack(prologue)
     spec = registry.require(type_id)
     spec.validate_header(
-        flags=flags, stream_id=stream_id,
-        token_len=token_len, payload_len=payload_len,
+        flags=flags,
+        stream_id=stream_id,
+        token_len=token_len,
+        payload_len=payload_len,
     )
-    return _decode_tail(prologue, raw[HEADER_LEN + PROLOGUE_LEN:], payload_len, spec)
+    return _decode_tail(prologue, raw[HEADER_LEN + PROLOGUE_LEN :], payload_len, spec)
+
 
 def make_data(
     *,
@@ -784,7 +799,7 @@ def make_data(
     )
     DEFAULT_REGISTRY.require(FrameType.DATA).validate(frame)
     return frame
-# ───────────────────────── async I/O ─────────────────────────
+
 
 class ByteReader(Protocol):
     async def readexactly(self, n: int) -> bytes: ...
@@ -827,7 +842,7 @@ WriteOutcome = Union[FrameWritten, StreamClosed]
 CloseOutcome = Union[StreamCloseSucceeded, StreamCloseFailed]
 
 
-def _to_timeout(value: object, name: str) -> Optional[float]:
+def _to_timeout(value: object, name: str) -> float | None:
     if value is None:
         return None
     if not isinstance(value, (int, float)):
@@ -846,12 +861,12 @@ def _to_limit(value: object) -> int:
     return min(value, MAX_FRAME_BYTES)
 
 
-def _remaining(deadline: Optional[float]) -> Optional[float]:
+def _remaining(deadline: float | None) -> float | None:
     if deadline is None:
         return None
     rem = deadline - asyncio.get_running_loop().time()
     if rem <= 0:
-        raise asyncio.TimeoutError
+        raise TimeoutError
     return rem
 
 
@@ -860,20 +875,18 @@ class FrameReader:
 
     __slots__ = ("_reader", "_registry", "_lock", "_closed")
 
-    def __init__(
-        self, reader: ByteReader, *, registry: FrameRegistry = DEFAULT_REGISTRY
-    ) -> None:
+    def __init__(self, reader: ByteReader, *, registry: FrameRegistry = DEFAULT_REGISTRY) -> None:
         self._reader = reader
         self._registry = registry
         self._lock = asyncio.Lock()
-        self._closed: Optional[str] = None
+        self._closed: str | None = None
 
     @property
     def closed(self) -> bool:
         return self._closed is not None
 
     @property
-    def close_reason(self) -> Optional[str]:
+    def close_reason(self) -> str | None:
         return self._closed
 
     def close(self, reason: str = "local_close") -> None:
@@ -885,26 +898,26 @@ class FrameReader:
         return StreamClosed(self._closed or reason)
 
     async def _exact(
-        self, n: int, deadline: Optional[float], *, frame_boundary: bool = False
-    ) -> Union[bytes, StreamClosed]:
+        self, n: int, deadline: float | None, *, frame_boundary: bool = False
+    ) -> bytes | StreamClosed:
         try:
             rem = _remaining(deadline)
             if rem is None:
                 data = await self._reader.readexactly(n)
             else:
                 data = await asyncio.wait_for(self._reader.readexactly(n), rem)
-        except asyncio.TimeoutError:                 # must precede OSError on 3.11+
+        except TimeoutError:  # must precede OSError on 3.11+
             if frame_boundary:
                 return self._end("idle_timeout")
             self.close("frame_timeout")
             raise FrameError("FRAME_TIMEOUT", str(n)) from None
         except asyncio.IncompleteReadError as exc:
             if frame_boundary and not exc.partial:
-                return self._end("eof")              # clean EOF at a frame boundary
+                return self._end("eof")  # clean EOF at a frame boundary
             self.close("protocol")
             raise FrameError("TRUNCATED", f"{len(exc.partial)}/{n}") from None
         except asyncio.CancelledError:
-            self.close("cancelled")                  # bytes may be partly consumed
+            self.close("cancelled")  # bytes may be partly consumed
             raise
         except (ConnectionError, OSError):
             return self._end("connection")
@@ -920,9 +933,9 @@ class FrameReader:
     async def read_frame(
         self,
         *,
-        idle_timeout: Optional[float] = None,
-        frame_timeout: Optional[float] = None,
-        max_payload: Union[int, Callable[[], int], None] = None,
+        idle_timeout: float | None = None,
+        frame_timeout: float | None = None,
+        max_payload: int | Callable[[], int] | None = None,
     ) -> RecvOutcome:
         """idle_timeout bounds the wait for the first byte; frame_timeout bounds
         the rest of the frame once the length prefix has been consumed."""
@@ -969,8 +982,10 @@ class FrameReader:
             try:
                 spec = self._registry.require(type_id)
                 spec.validate_header(
-                    flags=flags, stream_id=stream_id,
-                    token_len=token_len, payload_len=payload_len,
+                    flags=flags,
+                    stream_id=stream_id,
+                    token_len=token_len,
+                    payload_len=payload_len,
                 )
             except FrameError:
                 self.close("protocol")
@@ -995,15 +1010,20 @@ class FrameWriter:
     """
 
     __slots__ = (
-        "_writer", "_registry", "_lock", "_write_timeout",
-        "_close_timeout", "_closed", "_close_task",
+        "_writer",
+        "_registry",
+        "_lock",
+        "_write_timeout",
+        "_close_timeout",
+        "_closed",
+        "_close_task",
     )
 
     def __init__(
         self,
         writer: ByteWriter,
         *,
-        write_timeout: Optional[float] = WRITE_TIMEOUT,
+        write_timeout: float | None = WRITE_TIMEOUT,
         close_timeout: float = CLOSE_TIMEOUT,
         registry: FrameRegistry = DEFAULT_REGISTRY,
     ) -> None:
@@ -1014,8 +1034,8 @@ class FrameWriter:
         self._close_timeout = _to_timeout(close_timeout, "close_timeout")
         if self._close_timeout is None:
             raise FrameError("BAD_TIMEOUT", "close_timeout must be finite")
-        self._closed: Optional[str] = None
-        self._close_task: Optional[asyncio.Task[CloseOutcome]] = None
+        self._closed: str | None = None
+        self._close_task: asyncio.Task[CloseOutcome] | None = None
 
     @property
     def closed(self) -> bool:
@@ -1028,16 +1048,16 @@ class FrameWriter:
         return self._lock.locked()
 
     def _limit(self, timeout=None):
-         return self._write_timeout if timeout is None else _to_timeout(timeout, "timeout")
+        return self._write_timeout if timeout is None else _to_timeout(timeout, "timeout")
 
     async def _shutdown(self) -> CloseOutcome:
         try:
             await asyncio.wait_for(self._writer.wait_closed(), self._close_timeout)
-        except asyncio.TimeoutError:                 # must precede OSError on 3.11+
+        except TimeoutError:  # must precede OSError on 3.11+
             self._abort()
             return StreamCloseFailed("close_timeout")
         except (ConnectionError, OSError):
-            return StreamCloseSucceeded()            # peer already gone: closed
+            return StreamCloseSucceeded()  # peer already gone: closed
         except asyncio.CancelledError:
             # Reached only if this shared task is cancelled directly (callers
             # await it under shield). Treat as a failed close, not a leak.
@@ -1072,7 +1092,7 @@ class FrameWriter:
         including an except-CancelledError handler."""
         try:
             self._begin_close(reason)
-        except RuntimeError:                         # no running loop
+        except RuntimeError:  # no running loop
             if self._closed is None:
                 self._closed = reason
             try:
@@ -1084,10 +1104,7 @@ class FrameWriter:
         """Idempotent. A cancelled caller does not cancel the shared shutdown."""
         return await asyncio.shield(self._begin_close(reason))
 
-
-    async def write_frame(
-        self, frame: Frame, *, timeout: Optional[float] = None
-    ) -> WriteOutcome:
+    async def write_frame(self, frame: Frame, *, timeout: float | None = None) -> WriteOutcome:
         """timeout=None uses the configured write_timeout."""
         limit = self._limit(timeout)
         async with self._lock:
@@ -1116,7 +1133,7 @@ class FrameWriter:
                     await asyncio.wait_for(self._writer.drain(), limit)
             except asyncio.CancelledError:
                 raise
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._begin_close("write_timeout")
                 return StreamClosed("write_timeout")
             except (ConnectionError, OSError) as exc:
@@ -1144,7 +1161,7 @@ class FrameStream:
         writer: ByteWriter,
         *,
         registry: FrameRegistry = DEFAULT_REGISTRY,
-        write_timeout: Optional[float] = WRITE_TIMEOUT,
+        write_timeout: float | None = WRITE_TIMEOUT,
         close_timeout: float = CLOSE_TIMEOUT,
     ) -> None:
         self.reader = FrameReader(reader, registry=registry)
@@ -1161,15 +1178,16 @@ class FrameStream:
         conn: object,
         *,
         registry: FrameRegistry = DEFAULT_REGISTRY,
-        write_timeout: Optional[float] = WRITE_TIMEOUT,
+        write_timeout: float | None = WRITE_TIMEOUT,
         close_timeout: float = CLOSE_TIMEOUT,
-    ) -> "FrameStream":
+    ) -> FrameStream:
         reader = getattr(conn, "reader", None)
         writer = getattr(conn, "writer", None)
         if reader is None or writer is None:
             raise FrameError("BAD_TLS_CONN", type(conn).__name__)
         return cls(
-            reader, writer,
+            reader,
+            writer,
             registry=registry,
             write_timeout=write_timeout,
             close_timeout=close_timeout,
@@ -1182,9 +1200,9 @@ class FrameStream:
     async def recv(
         self,
         *,
-        idle_timeout: Optional[float] = None,
-        frame_timeout: Optional[float] = None,
-        max_payload: Union[int, Callable[[], int], None] = None,
+        idle_timeout: float | None = None,
+        frame_timeout: float | None = None,
+        max_payload: int | Callable[[], int] | None = None,
     ) -> RecvOutcome:
         try:
             out = await self.reader.read_frame(
@@ -1203,9 +1221,7 @@ class FrameStream:
             await self.writer.close(out.reason)
         return out
 
-    async def send(
-        self, frame: Frame, *, timeout: Optional[float] = None
-    ) -> WriteOutcome:
+    async def send(self, frame: Frame, *, timeout: float | None = None) -> WriteOutcome:
         out = await self.writer.write_frame(frame, timeout=timeout)
         if isinstance(out, StreamClosed):
             self.reader.close(out.reason)
@@ -1216,11 +1232,10 @@ class FrameStream:
         self.reader.close(reason)
         return await self.writer.close(reason)
 
-    async def __aenter__(self) -> "FrameStream":
+    async def __aenter__(self) -> FrameStream:
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         outcome = await self.close()
         if isinstance(outcome, StreamCloseFailed) and exc_type is None:
             raise StreamCloseError(outcome.reason)
-

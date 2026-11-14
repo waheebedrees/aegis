@@ -34,15 +34,14 @@ from libs.transport.stream_session import (
 from libs.transport.tls import TlsConnection, TransportSetupError
 
 
-
 log = logging.getLogger(__name__)
 
 ENROLL_ENDPOINT = "/aegis/v1/enroll"
-ISSUE_ENDPOINT  = "/aegis/v1/issue"
+ISSUE_ENDPOINT = "/aegis/v1/issue"
 INVOKE_ENDPOINT = "/aegis/v1/invoke"
 
 EXPECTED_SESSION = "test-session"
-EXPECTED_TASK    = "test-task"
+EXPECTED_TASK = "test-task"
 
 pytestmark = pytest.mark.asyncio
 
@@ -61,21 +60,22 @@ def server_node(pki):
 def client_node(pki):
     return pki.make_node("node-2", "127.0.0.1", 0)
 
+
 @pytest.fixture
 def gateway_node(pki):
     return pki.make_node("gateway", "127.0.0.1", 0)
 
+
 _OK_DOC = 0x00
-_ERR    = 0x01
+_ERR = 0x01
 _OK_RAW = 0x02
 
-_CODE_MAX   = 48
+_CODE_MAX = 48
 _DETAIL_MAX = 512
 
+
 def _safe_code(code: object) -> str:
-    s = "".join(
-        c for c in str(code) if c.isascii() and (c.isalnum() or c == "_")
-    )[:_CODE_MAX]
+    s = "".join(c for c in str(code) if c.isascii() and (c.isalnum() or c == "_"))[:_CODE_MAX]
     return s or "INTERNAL"
 
 
@@ -124,9 +124,7 @@ def decode(raw: bytes) -> Ok | Err:
         code_b, sep, detail_b = body.partition(b"\x00")
         if not sep or not code_b:
             raise TransportSetupError("BAD_RESPONSE", "malformed error frame")
-        if not all(
-            0x41 <= b <= 0x5A or 0x30 <= b <= 0x39 or b == 0x5F for b in code_b
-        ):
+        if not all(0x41 <= b <= 0x5A or 0x30 <= b <= 0x39 or b == 0x5F for b in code_b):
             raise TransportSetupError("BAD_RESPONSE", code_b.hex()[:32])
         return Err(
             code_b.decode("ascii"),
@@ -136,9 +134,9 @@ def decode(raw: bytes) -> Ok | Err:
     raise TransportSetupError("UNKNOWN_STATUS", f"0x{tag:02x}")
 
 
-
 class RemoteError(Exception):
     """Server processed the request and rejected it. Connection is fine."""
+
     __slots__ = ("code", "detail")
 
     def __init__(self, code: str, detail: str = "") -> None:
@@ -223,10 +221,9 @@ async def guarded(stream: Stream, *, where: str):
         raise
     except StreamError as exc:
         if exc.code in ("SEND_CLOSED", "RESET", "CONN_CLOSED"):
-            return                                  # peer already knows
+            return  # peer already knows
         await send_error(stream, exc.code, exc.detail)
     except (cc.RejectError, cc.EntitlementError, TransportSetupError) as exc:
-
         await send_error(
             stream,
             getattr(exc, "code", type(exc).__name__),
@@ -238,13 +235,12 @@ async def guarded(stream: Stream, *, where: str):
         await send_error(stream, "TIMEOUT", "")
     except Exception as exc:
         await send_error(stream, "INTERNAL", type(exc).__name__)
-        raise                                       # done-callback logs traceback
+        raise  # done-callback logs traceback
 
 
 CostFn = Callable[[cc.Call, cc.ServerContext, cc.Verdict], int]
 SettleFn = Callable[[bytes], int]
 Handler = Callable[[bytes], Awaitable[bytes]]
-
 
 
 class ToolRegistry:
@@ -287,7 +283,6 @@ class ToolRegistry:
         return entry[1], entry[2]
 
 
-
 class ScopeConfig(BaseModel):
     tools: list[str] = Field(min_length=1)
     domains: list[str] = Field(default_factory=list)
@@ -302,6 +297,7 @@ class ScopeConfig(BaseModel):
             domains=frozenset(self.domains),
         )
 
+
 class IssuerLimits(BaseModel):
     max_ttl_seconds: int = Field(gt=0, le=86400, default=10)
     max_delegation_depth: int = Field(ge=0, le=15, default=1)
@@ -309,20 +305,17 @@ class IssuerLimits(BaseModel):
     max_scope: ScopeConfig
 
 
-
 @dataclass
 class ServerHandle:
     node: NodeSpec
     clock: Clock
-    governor_key: cc.CapChainKey         # signs tokens
-    enrollment_key_obj: cc.CapChainKey   # signs receipts (separate)
+    governor_key: cc.CapChainKey  # signs tokens
+    enrollment_key_obj: cc.CapChainKey  # signs receipts (separate)
 
     port: int = 0
     tls: dict[str, bytes] = field(default_factory=dict)
     tasks: list[asyncio.Task] = field(default_factory=list)
-    by_kind: dict[str, asyncio.Queue] = field(
-        default_factory=lambda: defaultdict(asyncio.Queue)
-    )
+    by_kind: dict[str, asyncio.Queue] = field(default_factory=lambda: defaultdict(asyncio.Queue))
     live: list[Transport] = field(default_factory=list)
     issue_audience: frozenset[str] = frozenset()
     issue_budget_micros: int = 1_000_000
@@ -330,19 +323,18 @@ class ServerHandle:
 
     _HANDLERS = {
         ENROLL_ENDPOINT: "_handle_enroll",
-        ISSUE_ENDPOINT:  "_handle_issue",
+        ISSUE_ENDPOINT: "_handle_issue",
         INVOKE_ENDPOINT: "_handle_invoke",
     }
-
 
     @property
     def name(self) -> str:
         return self.node.name
-    
+
     @property
     def enrollment_verifier(self) -> bytes:
         return self.enrollment_key_obj.public_key
-    
+
     @property
     def spiffe_id(self):
         return self.node.spiffe_id
@@ -357,7 +349,7 @@ class ServerHandle:
         exc = task.exception()
         if exc is not None:
             log.exception("stream handler crashed", exc_info=exc)
-    
+
     async def close(self) -> None:
         for tr in self.live:
             if not tr.closed:
@@ -391,7 +383,7 @@ class ServerHandle:
             if not isinstance(req, Ok) or req.raw is None:
                 await send_error(stream, "BAD_REQUEST", "expected proof blob")
                 return
-       
+
             now_s = self.clock.now_seconds()
             proof = req.raw
             signed = cc.Signed.decode(proof)
@@ -400,10 +392,12 @@ class ServerHandle:
             if not isinstance(proof_ts, int) or isinstance(proof_ts, bool):
                 raise ClockSkew("enrollment proof has no integer ts field")
             require_within_skew(
-                proof_ts, now_s, self.node.enrollment_max_skew,
+                proof_ts,
+                now_s,
+                self.node.enrollment_max_skew,
                 what="enrollment proof timestamp",
             )
-            
+
             proof_cnf = cc.verify_enrollment(
                 proof,
                 issuer_id=self.node.spiffe_id,
@@ -412,47 +406,55 @@ class ServerHandle:
                 max_skew=self.node.enrollment_max_skew,
             )
 
-            ttl_seconds=86400 * 7
+            ttl_seconds = 86400 * 7
             receipt = cc.make_enrollment_receipt(
                 self.enrollment_key_obj,
-                holder=peer_id, 
+                holder=peer_id,
                 cnf=proof_cnf,
                 ttl_seconds=ttl_seconds,
                 now=now_s,
             )
-            enrolled =  cc.EnrolledKey(
+            enrolled = cc.EnrolledKey(
                 holder=peer_id,
                 key_thumbprint=proof_cnf,
                 receipt=receipt,
-                valid_until=now_s + ttl_seconds
+                valid_until=now_s + ttl_seconds,
             )
-            await send_ok_doc(stream, {
-                "key_thumbprint": enrolled.key_thumbprint,
-                "holder":         enrolled.holder,
-                "receipt":        cc.b64e(enrolled.receipt),   
-                "valid_until": enrolled.valid_until
-            })
+            await send_ok_doc(
+                stream,
+                {
+                    "key_thumbprint": enrolled.key_thumbprint,
+                    "holder": enrolled.holder,
+                    "receipt": cc.b64e(enrolled.receipt),
+                    "valid_until": enrolled.valid_until,
+                },
+            )
 
     async def _handle_issue(self, stream: Stream) -> None:
         async with guarded(stream, where="issue"):
-
             req = decode(stream.open_payload)
             if not isinstance(req, Ok) or req.doc is None:
                 await send_error(stream, "BAD_REQUEST", "expected request doc")
                 return
             doc = req.doc
             expected_fields = {
-                "holder", "cnf", "receipt", "valid_until",
-                "resource", "session_id", "task",
-                "scope", "ttl_seconds",
+                "holder",
+                "cnf",
+                "receipt",
+                "valid_until",
+                "resource",
+                "session_id",
+                "task",
+                "scope",
+                "ttl_seconds",
             }
             requested_scope = cc.Scope.from_body(doc["scope"])
             requested_ttl = int(doc["ttl_seconds"])
-    
+
             if set(doc) != expected_fields:
                 await send_error(stream, "BAD_REQUEST", f"fields={sorted(doc)}")
                 return
-            
+
             scope = cc.Scope(
                 tools=frozenset({"payments:read", "payments:write"}),
                 budget_micros=self.issue_budget_micros,
@@ -462,11 +464,11 @@ class ServerHandle:
                 await send_error(stream, "NO_SCOPE", doc["resource"])
                 return
             # Bootstrap/limits check
-            
+
             if requested_ttl > self.issuer.max_ttl_seconds:
                 await send_error(stream, "TTL_TOO_LONG", "")
                 return
-            if not requested_scope.is_subset_of(self.issuer.max_scope.to_scope()):  
+            if not requested_scope.is_subset_of(self.issuer.max_scope.to_scope()):
                 await send_error(stream, "SCOPE_WIDENED", "")
                 return
 
@@ -479,7 +481,7 @@ class ServerHandle:
                 await send_error(stream, "NOT_ENROLLED", "")
                 return
             receipt = cc.b64d(doc["receipt"])
-            
+
             receipt = cc.b64d(doc["receipt"])
             rolled = cc.EnrolledKey(
                 holder=holder,
@@ -488,16 +490,15 @@ class ServerHandle:
                 valid_until=int(doc["valid_until"]),
             )
             try:
-                ttl_seconds=3600
+                ttl_seconds = 3600
                 max_depth: int = 1
-                
-                token_bytes =  cc.mint(
-                    root_key=self.governor_key, # type: ignore
+
+                token_bytes = cc.mint(
+                    root_key=self.governor_key,  # type: ignore
                     issuer=self.node.spiffe_id,
-    
                     holder=holder,
                     enrolled_key=rolled,
-                    enrollment_verifier=self.enrollment_verifier,                 
+                    enrollment_verifier=self.enrollment_verifier,
                     cnf=cnf,
                     session_id=doc["session_id"],
                     task=doc["task"],
@@ -512,23 +513,25 @@ class ServerHandle:
                 return
             await send_ok_raw(stream, token_bytes)
 
- 
 
 @dataclass
 class ClientHandle:
     clock: Clock
-    node:NodeSpec
+    node: NodeSpec
     key: cc.CapChainKey
     binding: bytes
     transport: Transport
     active_stream: Optional[Stream] = None
-    receipt: Optional[str] = None       # base64 string
+    receipt: Optional[str] = None  # base64 string
     valid_until: Optional[int] = None
 
     @classmethod
     def new(cls, node, clock, binding, transport):
         return cls(
-            node=node, clock=clock, binding=binding, transport=transport,
+            node=node,
+            clock=clock,
+            binding=binding,
+            transport=transport,
             key=cc.CapChainKey.generate(agent_id=node.spiffe_id),
         )
 
@@ -543,10 +546,11 @@ class ClientHandle:
     @property
     def thumbprint(self) -> str:
         return self.key.thumbprint
+
     @property
     def name(self) -> str:
         return self.node.name
-    
+
     @property
     def public_key(self) -> bytes:
         return self.key.public_key
@@ -561,7 +565,10 @@ class ClientHandle:
 
     async def open_stream(self, kind, payload=b"", *, token=b"", pop=b""):
         self.active_stream = await self.transport.open_stream(
-            kind=kind, payload=payload, token=token, pop=pop,
+            kind=kind,
+            payload=payload,
+            token=token,
+            pop=pop,
         )
         return self.active_stream
 
@@ -576,9 +583,9 @@ class ClientHandle:
             chunks.append(c)
         return b"".join(chunks)
 
-    async def _request(self,  kind, payload=b"", token=b"", pop=b"", *, timeout: float = 10.0) -> Ok:
+    async def _request(self, kind, payload=b"", token=b"", pop=b"", *, timeout: float = 10.0) -> Ok:
         await self.open_stream(kind=kind, payload=payload, token=token, pop=pop)
-        
+
         await self.close_stream()
         raw = await self.bump(timeout)
         try:
@@ -595,7 +602,9 @@ class ClientHandle:
     async def enroll(self, *, timeout: float = 5.0) -> cc.EnrolledKey:
         proof = self.make_proof(self.peer_id)
         reply = await self._request(
-            ENROLL_ENDPOINT,  token=encode_ok_raw(proof), timeout=timeout,
+            ENROLL_ENDPOINT,
+            token=encode_ok_raw(proof),
+            timeout=timeout,
         )
         assert reply.doc
         self.receipt = reply.doc["receipt"]
@@ -610,23 +619,25 @@ class ClientHandle:
         )
 
     async def request_token(self, resource: str) -> Capability:
-        payload = encode_ok_doc({
-            "holder": self.spiffe_id,
-            "cnf": self.thumbprint,
-            "receipt": self.receipt,
-            "valid_until": self.valid_until,
-            "resource": resource,
-            "session_id": EXPECTED_SESSION,
-            "task": EXPECTED_TASK,
-            "scope": {
-                "tools":    [resource],
-                "budget":   100_000,
-                "audience": [self.peer_id],   # peer_id during ISSUE == issuer spiffe
-                "domains":  [],
-            },
-            "ttl_seconds": 300,
-        })
-        
+        payload = encode_ok_doc(
+            {
+                "holder": self.spiffe_id,
+                "cnf": self.thumbprint,
+                "receipt": self.receipt,
+                "valid_until": self.valid_until,
+                "resource": resource,
+                "session_id": EXPECTED_SESSION,
+                "task": EXPECTED_TASK,
+                "scope": {
+                    "tools": [resource],
+                    "budget": 100_000,
+                    "audience": [self.peer_id],  # peer_id during ISSUE == issuer spiffe
+                    "domains": [],
+                },
+                "ttl_seconds": 300,
+            }
+        )
+
         reply = await self._request(ISSUE_ENDPOINT, payload=payload)
         assert reply.raw is not None
         return Capability.parse(reply.raw)
@@ -667,15 +678,16 @@ class ClientHandle:
         )
 
         # 3. Metadata only. Body goes on the stream, not here.
-        meta = encode_ok_doc({
-            "resource":   resource,
-            "action":     action,
-            "session_id": session_id or cap.run_id,
-            "task":       task or cap.task_id,
-        })
+        meta = encode_ok_doc(
+            {
+                "resource": resource,
+                "action": action,
+                "session_id": session_id or cap.run_id,
+                "task": task or cap.task_id,
+            }
+        )
 
         return await self._raw_invoke(pop, cap.raw, meta, body, timeout=timeout)
-
 
     async def _raw_invoke(
         self,
@@ -693,7 +705,10 @@ class ClientHandle:
         body tampering, wrong session, etc.).
         """
         stream = await self.transport.open_stream(
-            INVOKE_ENDPOINT, payload=meta, token=token, pop=pop,
+            INVOKE_ENDPOINT,
+            payload=meta,
+            token=token,
+            pop=pop,
         )
         self.active_stream = stream
         if body:
@@ -719,34 +734,42 @@ class ClientHandle:
 
 
 class Client:
-    def __init__(self, node:NodeSpec, cfg: Optional[TransportConfig] = None) -> None:
+    def __init__(self, node: NodeSpec, cfg: Optional[TransportConfig] = None) -> None:
         self.clock: Clock = SystemClock()
         self.node: NodeSpec = node
         self.key: cc.CapChainKey = cc.CapChainKey.generate(agent_id=self.node.spiffe_id)
         self.cfg = cfg
+
     @property
     def spiffe_id(self):
         return self.node.spiffe_id
+
     @property
     def name(self) -> str:
         return self.node.name
-    
+
     @asynccontextmanager
-    async def handler(self, port:int,   target: str, cfg:Optional[TransportConfig] = None):
+    async def handler(self, port: int, target: str, cfg: Optional[TransportConfig] = None):
         cfg = cfg or self.cfg
         r, w = await asyncio.open_connection(
-            self.node.host, port, ssl=self.node.client_ssl,
+            self.node.host,
+            port,
+            ssl=self.node.client_ssl,
         )
         try:
             tls = await TlsConnection.awrap(
-                r, w, adapter=self.node.client_adapter(target),
+                r,
+                w,
+                adapter=self.node.client_adapter(target),
             )
         except Exception:
             w.close()
             raise
         try:
             client_transport = await Transport.establish(
-                tls, cfg , is_client=True, # type: ignore
+                tls,
+                cfg,
+                is_client=True,  # type: ignore
             )
         except Exception:
             w.close()
@@ -766,6 +789,7 @@ class Client:
             except Exception:
                 pass
 
+
 @dataclass
 class Broker:
     """Serves invoke. One instance per process."""
@@ -773,11 +797,11 @@ class Broker:
     node: NodeSpec
     gateway: cc.Gateway
     tools: ToolRegistry
-    entitlements: cc.EntitlementTable          # NEW
+    entitlements: cc.EntitlementTable  # NEW
 
     transport_config: TransportConfig = field(default_factory=TransportConfig)
     port: int = 0
-    _server: Optional[asyncio.AbstractServer] = None     
+    _server: Optional[asyncio.AbstractServer] = None
 
     _tasks: list[asyncio.Task] = field(default_factory=list)
     _transports: list[Transport] = field(default_factory=list)
@@ -785,14 +809,16 @@ class Broker:
     @property
     def spiffe_id(self):
         return self.node.spiffe_id
+
     @property
     def name(self) -> str:
         return self.node.name
-    
+
     async def start(self) -> int:
         self._server = await asyncio.start_server(
             self._on_connection,
-            self.node.host, self.node.port,
+            self.node.host,
+            self.node.port,
             ssl=self.node.server_ssl,
         )
         port = self._server.sockets[0].getsockname()[1]
@@ -821,25 +847,29 @@ class Broker:
     async def _on_connection(self, reader, writer) -> None:
         try:
             tls = await TlsConnection.awrap(
-                reader, writer, adapter=self.node.server_adapter(),
+                reader,
+                writer,
+                adapter=self.node.server_adapter(),
             )
         except Exception:
             writer.close()
             return
         try:
             transport = await Transport.establish(
-                tls, self.transport_config, is_client=False,
+                tls,
+                self.transport_config,
+                is_client=False,
             )
         except Exception:
             writer.close()
             return
-        
+
         self._transports.append(transport)
         try:
             while True:
                 stream = await transport.accept()
                 binding = tls.channel_binding
-                
+
                 task = asyncio.create_task(self._dispatch(binding, stream))
                 task.add_done_callback(self._on_task_done)
                 self._tasks.append(task)
@@ -857,7 +887,7 @@ class Broker:
         if exc is not None:
             log.exception("broker stream handler crashed", exc_info=exc)
 
-    async def _dispatch(self,binding:bytes, stream: Stream) -> None:
+    async def _dispatch(self, binding: bytes, stream: Stream) -> None:
         async with guarded(stream, where=stream.kind):
             handler = {
                 INVOKE_ENDPOINT: self._handle_invoke,
@@ -898,7 +928,6 @@ class Broker:
             await send_error(stream, exc.code, exc.detail)
             return
 
-
         call = cc.Call(resource=doc["resource"], action=doc["action"], body=body)
         context = cc.ServerContext(session_id=doc["session_id"], task=doc["task"])
 
@@ -924,21 +953,21 @@ class Broker:
             return
 
         await send_ok_raw(stream, result)
-               
 
-@asynccontextmanager 
+
+@asynccontextmanager
 async def transport_pair(
-    server_node:NodeSpec,
-    client_node:NodeSpec,
-    gateway_node:NodeSpec,
+    server_node: NodeSpec,
+    client_node: NodeSpec,
+    gateway_node: NodeSpec,
     server_cfg: Optional[TransportConfig] = None,
-    client_cfg: Optional[TransportConfig] = None,   
+    client_cfg: Optional[TransportConfig] = None,
 ):
     server_cfg = server_cfg or TransportConfig()
-    client_cfg = client_cfg or TransportConfig()    
+    client_cfg = client_cfg or TransportConfig()
     governor_key = cc.CapChainKey.generate(agent_id=server_node.spiffe_id)
     enrollment_key_obj = cc.CapChainKey.generate(agent_id=f"{server_node.spiffe_id}/enrollment")
- 
+
     replay = cc.InMemoryReplayStore(ttl_seconds=300)
     ledger = cc.InMemoryBudgetLedger()
     revocation = cc.InMemoryRevocationStore()
@@ -946,22 +975,24 @@ async def transport_pair(
 
     async def read_balance(body: bytes) -> bytes:
         return b'{"balance": 42}'
-    
+
     tools = ToolRegistry()
     tools.register("payments", "read", cost=1000, handler=read_balance, settle=lambda result: 100)
     client_handler = Client(client_node, client_cfg)
 
-    entitlements = cc.EntitlementTable({
-        (server_node.spiffe_id, client_node.spiffe_id): cc.Entitlement(
-            cnf=frozenset({client_handler.key.thumbprint}),
-            tools=frozenset({"payments:read", "payments:write"}),
-            audience=frozenset({gateway_node.spiffe_id}),
-            max_budget_micros=1_000_000,
-            max_ttl_seconds=3600,
-            max_outstanding_budget_micros=3_000_000,
-            max_live_tokens=100,
-        ),
-    })
+    entitlements = cc.EntitlementTable(
+        {
+            (server_node.spiffe_id, client_node.spiffe_id): cc.Entitlement(
+                cnf=frozenset({client_handler.key.thumbprint}),
+                tools=frozenset({"payments:read", "payments:write"}),
+                audience=frozenset({gateway_node.spiffe_id}),
+                max_budget_micros=1_000_000,
+                max_ttl_seconds=3600,
+                max_outstanding_budget_micros=3_000_000,
+                max_live_tokens=100,
+            ),
+        }
+    )
     brocker = Broker(
         gateway=cc.Gateway(
             cfg=cc.GatewayConfig(
@@ -976,11 +1007,12 @@ async def transport_pair(
                 ),
                 policy=cc.Policy(
                     root_issuers=frozenset({server_node.spiffe_id}),
-                edges=frozenset({
-                    (server_node.spiffe_id, client_node.spiffe_id),    # (node-1, node-2)
-    
-                }),
-                ),   
+                    edges=frozenset(
+                        {
+                            (server_node.spiffe_id, client_node.spiffe_id),  # (node-1, node-2)
+                        }
+                    ),
+                ),
             )
         ),
         tools=tools,
@@ -988,29 +1020,30 @@ async def transport_pair(
         node=gateway_node,
     )
     server_handler = ServerHandle(
-        node=server_node, clock=SystemClock(),
+        node=server_node,
+        clock=SystemClock(),
         governor_key=governor_key,
         enrollment_key_obj=enrollment_key_obj,
-    
-        issue_audience = frozenset({gateway_node.spiffe_id}),
-    
-        issuer = IssuerLimits(
-        max_ttl_seconds=300,
-        max_delegation_depth=1,
-        allowed_models=["key_bound"],
-        max_scope=ScopeConfig(
-            tools=["payments:read", "payments:write"],
-            domains=[],
-            audience=[server_node.spiffe_id, gateway_node.spiffe_id],
-            budget_micros=1_000_000,
+        issue_audience=frozenset({gateway_node.spiffe_id}),
+        issuer=IssuerLimits(
+            max_ttl_seconds=300,
+            max_delegation_depth=1,
+            allowed_models=["key_bound"],
+            max_scope=ScopeConfig(
+                tools=["payments:read", "payments:write"],
+                domains=[],
+                audience=[server_node.spiffe_id, gateway_node.spiffe_id],
+                budget_micros=1_000_000,
+            ),
         ),
     )
-    )  
 
     async def on_conn(reader, writer):
         try:
             tls = await TlsConnection.awrap(
-                reader, writer, adapter=server_node.server_adapter(),
+                reader,
+                writer,
+                adapter=server_node.server_adapter(),
             )
         except Exception:
             writer.close()
@@ -1034,15 +1067,18 @@ async def transport_pair(
             return
 
     server = await asyncio.start_server(
-        on_conn, server_node.host, server_node.port, ssl=server_node.server_ssl,
+        on_conn,
+        server_node.host,
+        server_node.port,
+        ssl=server_node.server_ssl,
     )
     await brocker.start()
     server_handler.port = server.sockets[0].getsockname()[1]
-    server_handler.issue_audience=frozenset({gateway_node.spiffe_id})
+    server_handler.issue_audience = frozenset({gateway_node.spiffe_id})
 
     try:
         yield brocker, server_handler, client_handler
-  
+
     finally:
         await brocker.stop()
         server.close()
@@ -1051,7 +1087,6 @@ async def transport_pair(
             await asyncio.wait_for(server.wait_closed(), 5.0)
         except asyncio.TimeoutError:
             pass
-
 
 
 async def test_01_enroll(server_node, client_node, gateway_node):
@@ -1081,6 +1116,7 @@ async def test_02_issue(server_node, client_node, gateway_node):
 
 # ═══════════════════════ issue rejection tests ═══════════════════════
 
+
 async def test_03_issue_out_of_scope(server_node, client_node, gateway_node):
     cfg = TransportConfig(stream_window=4 * 1024)
     async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
@@ -1104,6 +1140,7 @@ async def test_04_issue_not_enrolled(server_node, client_node, gateway_node):
 
 # ═══════════════════════ invoke happy path ═══════════════════════
 
+
 async def test_05_invoke(server_node, client_node, gateway_node):
     cfg = TransportConfig(stream_window=4 * 1024)
     async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
@@ -1126,6 +1163,7 @@ async def test_05_invoke(server_node, client_node, gateway_node):
 
 # ═══════════════════════ invoke rejection tests ═══════════════════════
 
+
 async def test_06_invoke_replay(server_node, client_node, gateway_node):
     """The same PoP is rejected the second time by the replay store."""
     cfg = TransportConfig(stream_window=4 * 1024)
@@ -1145,12 +1183,14 @@ async def test_06_invoke_replay(server_node, client_node, gateway_node):
                 channel_binding=ch.binding,
                 now=c.clock.now_seconds(),
             )
-            meta = encode_ok_doc({
-                "resource":   "payments",
-                "action":     "read",
-                "session_id": EXPECTED_SESSION,
-                "task":       EXPECTED_TASK,
-            })
+            meta = encode_ok_doc(
+                {
+                    "resource": "payments",
+                    "action": "read",
+                    "session_id": EXPECTED_SESSION,
+                    "task": EXPECTED_TASK,
+                }
+            )
 
             # First use succeeds.
             r1 = await ch._raw_invoke(pop, cap.raw, meta, body)
@@ -1160,8 +1200,6 @@ async def test_06_invoke_replay(server_node, client_node, gateway_node):
             with pytest.raises(RemoteError) as ei:
                 await ch._raw_invoke(pop, cap.raw, meta, body)
             assert ei.value.code == "REPLAY"
-
-
 
 
 async def test_06b_fresh_nonce_per_invoke(server_node, client_node, gateway_node):
@@ -1177,13 +1215,17 @@ async def test_06b_fresh_nonce_per_invoke(server_node, client_node, gateway_node
             # Same cap, same body, same everything — only the nonce differs.
             r1 = await ch.invoke(
                 cap,
-                resource="payments", action="read",
-                body=b'{"id": 1}', verifier_id=b.spiffe_id,
+                resource="payments",
+                action="read",
+                body=b'{"id": 1}',
+                verifier_id=b.spiffe_id,
             )
             r2 = await ch.invoke(
                 cap,
-                resource="payments", action="read",
-                body=b'{"id": 1}', verifier_id=b.spiffe_id,
+                resource="payments",
+                action="read",
+                body=b'{"id": 1}',
+                verifier_id=b.spiffe_id,
             )
             assert b'"balance": 42' in r1
             assert b'"balance": 42' in r2
@@ -1203,32 +1245,38 @@ async def test_06c_failed_invoke_burns_nonce(server_node, client_node, gateway_n
             pop = c.key.make_pop(
                 token=cap.raw,
                 verifier_id=b.spiffe_id,
-                resource="payments", action="read",
+                resource="payments",
+                action="read",
                 body=body,
                 channel_binding=ch.binding,
                 now=c.clock.now_seconds(),
             )
             # Wrong session — fails after PoP verifies, nonce consumed
-            meta_bad = encode_ok_doc({
-                "resource": "payments", "action": "read",
-                "session_id": "a-different-session",
-                "task": EXPECTED_TASK,
-            })
+            meta_bad = encode_ok_doc(
+                {
+                    "resource": "payments",
+                    "action": "read",
+                    "session_id": "a-different-session",
+                    "task": EXPECTED_TASK,
+                }
+            )
             with pytest.raises(RemoteError) as ei:
                 await ch._raw_invoke(pop, cap.raw, meta_bad, body)
             assert ei.value.code == "WRONG_SESSION"
 
             # Retry with CORRECT session, SAME PoP — must be REPLAY,
             # not a fresh policy check. The nonce is already burned.
-            meta_good = encode_ok_doc({
-                "resource": "payments", "action": "read",
-                "session_id": EXPECTED_SESSION,
-                "task": EXPECTED_TASK,
-            })
+            meta_good = encode_ok_doc(
+                {
+                    "resource": "payments",
+                    "action": "read",
+                    "session_id": EXPECTED_SESSION,
+                    "task": EXPECTED_TASK,
+                }
+            )
             with pytest.raises(RemoteError) as ei:
                 await ch._raw_invoke(pop, cap.raw, meta_good, body)
             assert ei.value.code == "REPLAY"
-
 
 
 async def test_07_invoke_body_tampered(server_node, client_node, gateway_node):
@@ -1245,21 +1293,25 @@ async def test_07_invoke_body_tampered(server_node, client_node, gateway_node):
                 verifier_id=b.spiffe_id,
                 resource="payments",
                 action="read",
-                body=b'{"id": 42}',              # signs this
+                body=b'{"id": 42}',  # signs this
                 channel_binding=ch.binding,
                 now=c.clock.now_seconds(),
             )
-            meta = encode_ok_doc({
-                "resource":   "payments",
-                "action":     "read",
-                "session_id": EXPECTED_SESSION,
-                "task":       EXPECTED_TASK,
-            })
+            meta = encode_ok_doc(
+                {
+                    "resource": "payments",
+                    "action": "read",
+                    "session_id": EXPECTED_SESSION,
+                    "task": EXPECTED_TASK,
+                }
+            )
 
             with pytest.raises(RemoteError) as ei:
                 await ch._raw_invoke(
-                    pop, cap.raw, meta,
-                    b'{"id": 99}',               # sends a different body
+                    pop,
+                    cap.raw,
+                    meta,
+                    b'{"id": 99}',  # sends a different body
                 )
             assert ei.value.code == "POP_BINDING"
 
@@ -1299,19 +1351,21 @@ async def test_09_invoke_wrong_verifier(server_node, client_node, gateway_node):
             body = b'{"id": 42}'
             pop = c.key.make_pop(
                 token=cap.raw,
-                verifier_id="spiffe://aegis-test/evil",   # not the gateway
+                verifier_id="spiffe://aegis-test/evil",  # not the gateway
                 resource="payments",
                 action="read",
                 body=body,
                 channel_binding=ch.binding,
                 now=c.clock.now_seconds(),
             )
-            meta = encode_ok_doc({
-                "resource":   "payments",
-                "action":     "read",
-                "session_id": EXPECTED_SESSION,
-                "task":       EXPECTED_TASK,
-            })
+            meta = encode_ok_doc(
+                {
+                    "resource": "payments",
+                    "action": "read",
+                    "session_id": EXPECTED_SESSION,
+                    "task": EXPECTED_TASK,
+                }
+            )
 
             with pytest.raises(RemoteError) as ei:
                 await ch._raw_invoke(pop, cap.raw, meta, body)
@@ -1337,12 +1391,14 @@ async def test_10_invoke_wrong_session(server_node, client_node, gateway_node):
                 channel_binding=ch.binding,
                 now=c.clock.now_seconds(),
             )
-            meta = encode_ok_doc({
-                "resource":   "payments",
-                "action":     "read",
-                "session_id": "a-different-session",   # ≠ token.sid
-                "task":       EXPECTED_TASK,
-            })
+            meta = encode_ok_doc(
+                {
+                    "resource": "payments",
+                    "action": "read",
+                    "session_id": "a-different-session",  # ≠ token.sid
+                    "task": EXPECTED_TASK,
+                }
+            )
 
             with pytest.raises(RemoteError) as ei:
                 await ch._raw_invoke(pop, cap.raw, meta, body)
@@ -1350,6 +1406,7 @@ async def test_10_invoke_wrong_session(server_node, client_node, gateway_node):
 
 
 # ═══════════════════════ wire codec unit tests ═══════════════════════
+
 
 async def test_11_wire_codec_roundtrip():
     """Every tag encodes and decodes symmetrically."""
@@ -1365,6 +1422,7 @@ async def test_11_wire_codec_roundtrip():
     assert isinstance(reply, Err)
     assert reply.code == "NO_SCOPE"
     assert reply.detail == "payments:delete"
+
 
 async def test_12_wire_codec_rejects_malformed():
     """Malformed frames fail closed, never silently."""
@@ -1396,10 +1454,6 @@ async def test_12_wire_codec_rejects_malformed():
     assert _code(ei.value) == "BAD_RESPONSE"
 
 
-
-
-
-
 async def test_14_expired_leaf_blocks_transport(tmp_path):
     """A leaf past its not_after cannot anchor a Transport, even when
     the CA is valid. Distinct from test_13: leaf validity and anchor
@@ -1408,31 +1462,32 @@ async def test_14_expired_leaf_blocks_transport(tmp_path):
     import ssl
 
     pki = PKI(tmp_path, ["node-1", "node-2", "gateway"], "aegis-test")
-    server_node  = pki.make_node("node-1",  "127.0.0.1", 0,
-                                 agent_not_after_seconds=-30)
-    client_node  = pki.make_node("node-2",  "127.0.0.1", 0)
+    server_node = pki.make_node("node-1", "127.0.0.1", 0, agent_not_after_seconds=-30)
+    client_node = pki.make_node("node-2", "127.0.0.1", 0)
     gateway_node = pki.make_node("gateway", "127.0.0.1", 0)
 
     cfg = TransportConfig(stream_window=4 * 1024)
     async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
         with pytest.raises(
-            (ssl.SSLError, TransportSetupError, TransportError,
-             ConnectionError, OSError)
+            (ssl.SSLError, TransportSetupError, TransportError, ConnectionError, OSError)
         ) as ei:
             async with c.handler(s.port, s.name, cfg) as ch:
-                pytest.fail(
-                    f"Transport established with expired leaf; peer={ch.peer_id!r}"
-                )
+                pytest.fail(f"Transport established with expired leaf; peer={ch.peer_id!r}")
 
         code = getattr(ei.value, "code", None)
         detail = getattr(ei.value, "detail", None)
-        text = " ".join(
-            str(x) for x in (code, detail, ei.value) if x is not None
-        ).upper()
-        assert any(kw in text for kw in (
-            "CERT", "CERTIFICATE", "EXPIRED", "VERIFY", "HANDSHAKE", "TLS",
-        )), f"Transport failed but not for TLS reasons: {ei.value!r}"
-
+        text = " ".join(str(x) for x in (code, detail, ei.value) if x is not None).upper()
+        assert any(
+            kw in text
+            for kw in (
+                "CERT",
+                "CERTIFICATE",
+                "EXPIRED",
+                "VERIFY",
+                "HANDSHAKE",
+                "TLS",
+            )
+        ), f"Transport failed but not for TLS reasons: {ei.value!r}"
 
 
 async def test_13_expired_ca_blocks_transport(tmp_path):
@@ -1444,41 +1499,44 @@ async def test_13_expired_ca_blocks_transport(tmp_path):
     is that no Transport object is ever returned to the caller.
     """
     import ssl
+
     pki = PKI(
         tmp_path,
         ["node-1", "node-2", "gateway"],
         "aegis-test",
-        ca_not_after_seconds_from_now=-60,      # CA expired one minute ago
+        ca_not_after_seconds_from_now=-60,  # CA expired one minute ago
     )
-    server_node  = pki.make_node("node-1",  "127.0.0.1", 0)
-    client_node  = pki.make_node("node-2",  "127.0.0.1", 0)
+    server_node = pki.make_node("node-1", "127.0.0.1", 0)
+    client_node = pki.make_node("node-2", "127.0.0.1", 0)
     gateway_node = pki.make_node("gateway", "127.0.0.1", 0)
 
     cfg = TransportConfig(stream_window=4 * 1024)
     async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
         with pytest.raises(
-            (ssl.SSLError, TransportSetupError, TransportError,
-             ConnectionError, OSError)
+            (ssl.SSLError, TransportSetupError, TransportError, ConnectionError, OSError)
         ) as ei:
             async with c.handler(s.port, s.name, cfg) as ch:
                 # Reaching this line means Transport.establish returned a
                 # live transport despite the CA being expired.
-                pytest.fail(
-                    f"Transport established with expired CA; peer={ch.peer_id!r}"
-                )
+                pytest.fail(f"Transport established with expired CA; peer={ch.peer_id!r}")
 
         # Not every failure mode carries structured info on the exception
         # (TransportSetupError used to not, until it gained .code). Check
         # both the code attribute and the message so this works either way.
         code = getattr(ei.value, "code", None)
         detail = getattr(ei.value, "detail", None)
-        text = " ".join(
-            str(x) for x in (code, detail, ei.value) if x is not None
-        ).upper()
-        assert any(kw in text for kw in (
-            "CERT", "CERTIFICATE", "EXPIRED", "VERIFY", "HANDSHAKE", "TLS",
-        )), f"Transport failed but not for TLS reasons: {ei.value!r}"
-
+        text = " ".join(str(x) for x in (code, detail, ei.value) if x is not None).upper()
+        assert any(
+            kw in text
+            for kw in (
+                "CERT",
+                "CERTIFICATE",
+                "EXPIRED",
+                "VERIFY",
+                "HANDSHAKE",
+                "TLS",
+            )
+        ), f"Transport failed but not for TLS reasons: {ei.value!r}"
 
 
 async def test_15_stale_pop(server_node, client_node, gateway_node):
@@ -1494,19 +1552,24 @@ async def test_15_stale_pop(server_node, client_node, gateway_node):
             stale_pop = c.key.make_pop(
                 token=cap.raw,
                 verifier_id=b.spiffe_id,
-                resource="payments", action="read",
+                resource="payments",
+                action="read",
                 body=body,
                 channel_binding=ch.binding,
-                now=c.clock.now_seconds() - 60,   # 60s ago, max_skew=30
+                now=c.clock.now_seconds() - 60,  # 60s ago, max_skew=30
             )
-            meta = encode_ok_doc({
-                "resource": "payments", "action": "read",
-                "session_id": EXPECTED_SESSION, "task": EXPECTED_TASK,
-            })
+            meta = encode_ok_doc(
+                {
+                    "resource": "payments",
+                    "action": "read",
+                    "session_id": EXPECTED_SESSION,
+                    "task": EXPECTED_TASK,
+                }
+            )
             with pytest.raises(RemoteError) as ei:
                 await ch._raw_invoke(stale_pop, cap.raw, meta, body)
             assert ei.value.code == "POP_STALE"
-    
+
 
 async def test_16_evidence_logged(server_node, client_node, gateway_node):
     cfg = TransportConfig(stream_window=4 * 1024)
@@ -1517,22 +1580,24 @@ async def test_16_evidence_logged(server_node, client_node, gateway_node):
 
         async with c.handler(b.port, b.name, cfg) as ch:
             await ch.invoke(
-                cap, resource="payments", action="read",
-                body=b'{"id": 42}', verifier_id=b.spiffe_id,
+                cap,
+                resource="payments",
+                action="read",
+                body=b'{"id": 42}',
+                verifier_id=b.spiffe_id,
             )
 
         records = await b.gateway.evidence.records()
-        assert await  b.gateway.evidence.verify_integrity()
+        assert await b.gateway.evidence.verify_integrity()
 
         # Admission + settlement
         assert len(records) == 2
         admit, settled = records
         assert admit.code == "OK"
-        assert admit.cost_micros == 1000           # reserved
+        assert admit.cost_micros == 1000  # reserved
         assert settled.code == "SETTLED"
-        assert settled.cost_micros == 100           # actual
+        assert settled.cost_micros == 100  # actual
         assert settled.related_id == admit.action_id
-
 
 
 async def test_17_revoked_key_rejected(server_node, client_node, gateway_node):
@@ -1548,11 +1613,13 @@ async def test_17_revoked_key_rejected(server_node, client_node, gateway_node):
         async with c.handler(b.port, b.name, cfg) as ch:
             with pytest.raises(RemoteError) as ei:
                 await ch.invoke(
-                    cap, resource="payments", action="read",
-                    body=b'{"id": 42}', verifier_id=b.spiffe_id,
+                    cap,
+                    resource="payments",
+                    action="read",
+                    body=b'{"id": 42}',
+                    verifier_id=b.spiffe_id,
                 )
             assert ei.value.code == "REVOKED"
-
 
 
 async def test_18_budget_exhausted(server_node, client_node, gateway_node):
@@ -1572,13 +1639,19 @@ async def test_18_budget_exhausted(server_node, client_node, gateway_node):
 
         async with c.handler(b.port, b.name, cfg) as ch:
             await ch.invoke(
-                cap, resource="payments", action="read",
-                body=b'{"id": 1}', verifier_id=b.spiffe_id,
+                cap,
+                resource="payments",
+                action="read",
+                body=b'{"id": 1}',
+                verifier_id=b.spiffe_id,
             )
             with pytest.raises(RemoteError) as ei:
                 await ch.invoke(
-                    cap, resource="payments", action="read",
-                    body=b'{"id": 1}', verifier_id=b.spiffe_id,
+                    cap,
+                    resource="payments",
+                    action="read",
+                    body=b'{"id": 1}',
+                    verifier_id=b.spiffe_id,
                 )
             assert ei.value.code == "BUDGET_EXHAUSTED"
 
@@ -1597,19 +1670,23 @@ async def test_19_replay_store_state(server_node, client_node, gateway_node):
 
         async with c.handler(b.port, b.name, cfg) as ch:
             await ch.invoke(
-                cap, resource="payments", action="read",
-                body=b'{"id": 1}', verifier_id=b.spiffe_id,
+                cap,
+                resource="payments",
+                action="read",
+                body=b'{"id": 1}',
+                verifier_id=b.spiffe_id,
             )
 
         # The nonce the client used is now in the gateway's replay store.
         # A subsequent fresh invoke should still work (fresh nonce).
         async with c.handler(b.port, b.name, cfg) as ch:
             await ch.invoke(
-                cap, resource="payments", action="read",
-                body=b'{"id": 1}', verifier_id=b.spiffe_id,
+                cap,
+                resource="payments",
+                action="read",
+                body=b'{"id": 1}',
+                verifier_id=b.spiffe_id,
             )
-
-
 
 
 async def stolen_governor_key_plus_agent_identity(server_node, client_node, gateway_node):
@@ -1618,30 +1695,43 @@ async def stolen_governor_key_plus_agent_identity(server_node, client_node, gate
     async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
         attacker = cc.CapChainKey.generate(agent_id=client_node.spiffe_id)
         forged = cc.mint(
-            s.governor_key,                                   # stolen governor key
+            s.governor_key,  # stolen governor key
             enrollment_verifier=b",",
             enrolled_key=b" ",
             issuer=server_node.spiffe_id,
             holder=client_node.spiffe_id,
-            cnf=attacker.thumbprint,                 # attacker-chosen cnf, no enrollment
-            session_id=EXPECTED_SESSION, task=EXPECTED_TASK,
+            cnf=attacker.thumbprint,  # attacker-chosen cnf, no enrollment
+            session_id=EXPECTED_SESSION,
+            task=EXPECTED_TASK,
             scope=cc.Scope(
                 tools=frozenset({"payments:read", "payments:write", "payments:delete"}),
                 budget_micros=10**12,
                 audience=frozenset({b.spiffe_id}),
             ),
-            ttl_seconds=86400, now=c.clock.now_seconds(), max_depth=1,
+            ttl_seconds=86400,
+            now=c.clock.now_seconds(),
+            max_depth=1,
         ).encode()
 
-        async with c.handler(b.port, b.name, cfg) as ch:   # attacker holds node-2's mTLS identity
+        async with c.handler(b.port, b.name, cfg) as ch:  # attacker holds node-2's mTLS identity
             body = b'{"id": 1}'
             pop = attacker.make_pop(
-                token=forged, verifier_id=b.spiffe_id,
-                resource="payments", action="read", body=body,
-                channel_binding=ch.binding, now=c.clock.now_seconds(),
+                token=forged,
+                verifier_id=b.spiffe_id,
+                resource="payments",
+                action="read",
+                body=body,
+                channel_binding=ch.binding,
+                now=c.clock.now_seconds(),
             )
-            meta = encode_ok_doc({"resource": "payments", "action": "read",
-                                  "session_id": EXPECTED_SESSION, "task": EXPECTED_TASK})
+            meta = encode_ok_doc(
+                {
+                    "resource": "payments",
+                    "action": "read",
+                    "session_id": EXPECTED_SESSION,
+                    "task": EXPECTED_TASK,
+                }
+            )
             result = await ch._raw_invoke(pop, forged, meta, body)
         assert b'"balance": 42' in result
 
@@ -1653,7 +1743,7 @@ async def test_20_stolen_governor_key_attacker_cnf_rejected(server_node, client_
         # they get a valid receipt for THEIR key)
         attacker = cc.CapChainKey.generate(agent_id=client_node.spiffe_id)
         async with c.handler(s.port, s.name, cfg) as ch:
-            enrolled = await ch.enroll()   # receipt for c.key, not attacker.key
+            enrolled = await ch.enroll()  # receipt for c.key, not attacker.key
 
         # Attacker swaps in their own key + uses the cnf from a stolen receipt
         now = c.clock.now_seconds()
@@ -1666,50 +1756,77 @@ async def test_20_stolen_governor_key_attacker_cnf_rejected(server_node, client_
             ttl=86400,
             now=now,
             audience=b.spiffe_id,
-            receipt=cc.b64d(enrolled.receipt),
+            receipt=cc.b64d(enrolled.receipt),  # type: ignore
         )
 
         async with c.handler(b.port, b.name, cfg) as ch:
             with pytest.raises(RemoteError) as ei:
-                await _invoke_raw(ch, token=forged, signer=attacker,
-                                  verifier_id=b.spiffe_id, now=now)
+                await _invoke_raw(
+                    ch, token=forged, signer=attacker, verifier_id=b.spiffe_id, now=now
+                )
             assert ei.value.code == "CNF_NOT_REGISTERED"
+
 
 async def stolen_governor_key_alone_rejected(server_node, client_node, gateway_node):
     """Expected to be REJECTED. If this passes, things are worse than I claimed."""
     cfg = TransportConfig(stream_window=4 * 1024)
     async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
-        outsider = Client(server_node, cfg)          # mTLS identity is node-1, not the holder
+        outsider = Client(server_node, cfg)  # mTLS identity is node-1, not the holder
         forged = cc.mint(
-            s.governor_key,                                   # stolen governor key
+            s.governor_key,  # stolen governor key
             enrollment_verifier=b",",
             enrolled_key=b" ",
             issuer=server_node.spiffe_id,
             holder=client_node.spiffe_id,
             cnf=outsider.key.thumbprint,
-            session_id=EXPECTED_SESSION, task=EXPECTED_TASK,
-            scope=cc.Scope(tools=frozenset({"payments:read"}), budget_micros=10**6,
-                           audience=frozenset({b.spiffe_id})),
-            ttl_seconds=3600, now=outsider.clock.now_seconds(), max_depth=1,
+            session_id=EXPECTED_SESSION,
+            task=EXPECTED_TASK,
+            scope=cc.Scope(
+                tools=frozenset({"payments:read"}),
+                budget_micros=10**6,
+                audience=frozenset({b.spiffe_id}),
+            ),
+            ttl_seconds=3600,
+            now=outsider.clock.now_seconds(),
+            max_depth=1,
         ).encode()
 
         async with outsider.handler(b.port, b.name, cfg) as ch:
             body = b'{"id": 1}'
             pop = outsider.key.make_pop(
-                token=forged, verifier_id=b.spiffe_id,
-                resource="payments", action="read", body=body,
-                channel_binding=ch.binding, now=outsider.clock.now_seconds(),
+                token=forged,
+                verifier_id=b.spiffe_id,
+                resource="payments",
+                action="read",
+                body=body,
+                channel_binding=ch.binding,
+                now=outsider.clock.now_seconds(),
             )
-            meta = encode_ok_doc({"resource": "payments", "action": "read",
-                                  "session_id": EXPECTED_SESSION, "task": EXPECTED_TASK})
+            meta = encode_ok_doc(
+                {
+                    "resource": "payments",
+                    "action": "read",
+                    "session_id": EXPECTED_SESSION,
+                    "task": EXPECTED_TASK,
+                }
+            )
             with pytest.raises(RemoteError):
                 await ch._raw_invoke(pop, forged, meta, body)
 
 
-def _forge(server: ServerHandle, *, holder: str, cnf: str, tools, budget: int,
-           ttl: int, now: int, audience: str,
-           receipt: bytes | None = None,
-           session: str = EXPECTED_SESSION) -> bytes:
+def _forge(
+    server: ServerHandle,
+    *,
+    holder: str,
+    cnf: str,
+    tools,
+    budget: int,
+    ttl: int,
+    now: int,
+    audience: str,
+    receipt: bytes | None = None,
+    session: str = EXPECTED_SESSION,
+) -> bytes:
     """Forge a token as if the attacker holds the governor key."""
     if receipt is None:
         receipt = cc.make_enrollment_receipt(
@@ -1731,7 +1848,7 @@ def _forge(server: ServerHandle, *, holder: str, cnf: str, tools, budget: int,
         issuer=server.spiffe_id,
         holder=holder,
         cnf=cnf,
-        session_id=session,               # ← was EXPECTED_SESSION hardcoded
+        session_id=session,  # ← was EXPECTED_SESSION hardcoded
         task=EXPECTED_TASK,
         scope=cc.Scope(
             tools=frozenset(tools),
@@ -1743,66 +1860,112 @@ def _forge(server: ServerHandle, *, holder: str, cnf: str, tools, budget: int,
         max_depth=1,
     ).encode()
 
-async def _invoke_raw(ch, *, token: bytes, signer, verifier_id: str, now: int,
-                      body: bytes = b'{"id": 1}',
-                      session: str = EXPECTED_SESSION) -> bytes:
+
+async def _invoke_raw(
+    ch,
+    *,
+    token: bytes,
+    signer,
+    verifier_id: str,
+    now: int,
+    body: bytes = b'{"id": 1}',
+    session: str = EXPECTED_SESSION,
+) -> bytes:
     pop = signer.make_pop(
-        token=token, verifier_id=verifier_id,
-        resource="payments", action="read", body=body,
-        channel_binding=ch.binding, now=now,
+        token=token,
+        verifier_id=verifier_id,
+        resource="payments",
+        action="read",
+        body=body,
+        channel_binding=ch.binding,
+        now=now,
     )
-    meta = encode_ok_doc({"resource": "payments", "action": "read",
-                          "session_id": session,          # ← was EXPECTED_SESSION
-                          "task": EXPECTED_TASK})
+    meta = encode_ok_doc(
+        {
+            "resource": "payments",
+            "action": "read",
+            "session_id": session,  # ← was EXPECTED_SESSION
+            "task": EXPECTED_TASK,
+        }
+    )
     return await ch._raw_invoke(pop, token, meta, body)
+
 
 async def test_20_stolen_governor_key_attacker_cnf_rejected(server_node, client_node, gateway_node):
     cfg = TransportConfig(stream_window=4 * 1024)
     async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
         attacker = cc.CapChainKey.generate(agent_id=client_node.spiffe_id)
         now = c.clock.now_seconds()
-        forged = _forge(s, holder=client_node.spiffe_id, cnf=attacker.thumbprint,
-                        tools={"payments:read", "payments:write", "payments:delete"},
-                        budget=10**12, ttl=86400, now=now, audience=b.spiffe_id)
+        forged = _forge(
+            s,
+            holder=client_node.spiffe_id,
+            cnf=attacker.thumbprint,
+            tools={"payments:read", "payments:write", "payments:delete"},
+            budget=10**12,
+            ttl=86400,
+            now=now,
+            audience=b.spiffe_id,
+        )
         async with c.handler(b.port, b.name, cfg) as ch:
             with pytest.raises(RemoteError) as ei:
-                await _invoke_raw(ch, token=forged, signer=attacker,
-                                  verifier_id=b.spiffe_id, now=now)
+                await _invoke_raw(
+                    ch, token=forged, signer=attacker, verifier_id=b.spiffe_id, now=now
+                )
             assert ei.value.code == "CNF_NOT_REGISTERED"
-            
+
+
 async def test_21_outsider_with_governor_identity_rejected(server_node, client_node, gateway_node):
     cfg = TransportConfig(stream_window=4 * 1024)
     async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
-        outsider = Client(server_node, cfg)              # TLS identity = node-1
+        outsider = Client(server_node, cfg)  # TLS identity = node-1
         now = outsider.clock.now_seconds()
-        forged = _forge(s, holder=client_node.spiffe_id, cnf=outsider.key.thumbprint,
-                        tools={"payments:read"}, budget=10**6, ttl=3600,
-                        now=now, audience=b.spiffe_id)
+        forged = _forge(
+            s,
+            holder=client_node.spiffe_id,
+            cnf=outsider.key.thumbprint,
+            tools={"payments:read"},
+            budget=10**6,
+            ttl=3600,
+            now=now,
+            audience=b.spiffe_id,
+        )
         async with outsider.handler(b.port, b.name, cfg) as ch:
             with pytest.raises(RemoteError) as ei:
-                await _invoke_raw(ch, token=forged, signer=outsider.key,
-                                  verifier_id=b.spiffe_id, now=now)
+                await _invoke_raw(
+                    ch, token=forged, signer=outsider.key, verifier_id=b.spiffe_id, now=now
+                )
             assert ei.value.code == "ROLE_REQUIRED"
 
-@pytest.mark.parametrize("tools,budget,ttl,code", [
-    ({"payments:read", "payments:delete"}, 1_000_000, 3600, "SCOPE_EXCEEDS_ENTITLEMENT"),
-    ({"*"},                                1_000_000, 3600, "SCOPE_EXCEEDS_ENTITLEMENT"),
-    ({"payments:read"},                    10**12,    3600, "BUDGET_EXCEEDS_ENTITLEMENT"),
-    ({"payments:read"},                    1_000_000, 86400, "TTL_EXCEEDS_ENTITLEMENT"),
-])
+
+@pytest.mark.parametrize(
+    "tools,budget,ttl,code",
+    [
+        ({"payments:read", "payments:delete"}, 1_000_000, 3600, "SCOPE_EXCEEDS_ENTITLEMENT"),
+        ({"*"}, 1_000_000, 3600, "SCOPE_EXCEEDS_ENTITLEMENT"),
+        ({"payments:read"}, 10**12, 3600, "BUDGET_EXCEEDS_ENTITLEMENT"),
+        ({"payments:read"}, 1_000_000, 86400, "TTL_EXCEEDS_ENTITLEMENT"),
+    ],
+)
 async def test_22_registered_holder_overbroad_token_rejected(
-        server_node, client_node, gateway_node, tools, budget, ttl, code):
+    server_node, client_node, gateway_node, tools, budget, ttl, code
+):
     """The cnf is registered, so only the ceiling is under test."""
     cfg = TransportConfig(stream_window=4 * 1024)
     async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
         now = c.clock.now_seconds()
-        forged = _forge(s, holder=client_node.spiffe_id, cnf=c.key.thumbprint,
-                        tools=tools, budget=budget, ttl=ttl,
-                        now=now, audience=b.spiffe_id)
+        forged = _forge(
+            s,
+            holder=client_node.spiffe_id,
+            cnf=c.key.thumbprint,
+            tools=tools,
+            budget=budget,
+            ttl=ttl,
+            now=now,
+            audience=b.spiffe_id,
+        )
         async with c.handler(b.port, b.name, cfg) as ch:
             with pytest.raises(RemoteError) as ei:
-                await _invoke_raw(ch, token=forged, signer=c.key,
-                                  verifier_id=b.spiffe_id, now=now)
+                await _invoke_raw(ch, token=forged, signer=c.key, verifier_id=b.spiffe_id, now=now)
             assert ei.value.code == code
 
 
@@ -1818,12 +1981,19 @@ async def test_23_legit_token_with_other_pop_key_rejected(server_node, client_no
         attacker = cc.CapChainKey.generate(agent_id=client_node.spiffe_id)
         async with c.handler(b.port, b.name, cfg) as ch:
             with pytest.raises(RemoteError) as ei:
-                await _invoke_raw(ch, token=cap.raw, signer=attacker,
-                                  verifier_id=b.spiffe_id, now=c.clock.now_seconds())
+                await _invoke_raw(
+                    ch,
+                    token=cap.raw,
+                    signer=attacker,
+                    verifier_id=b.spiffe_id,
+                    now=c.clock.now_seconds(),
+                )
             assert ei.value.code == "POP_MISMATCH"
 
 
-async def test_24_many_tokens_cannot_exceed_outstanding_budget(server_node, client_node, gateway_node):
+async def test_24_many_tokens_cannot_exceed_outstanding_budget(
+    server_node, client_node, gateway_node
+):
     """The hole in my previous version.
 
     The attacker holds the governor key and forges N tokens with N *different*
@@ -1841,14 +2011,24 @@ async def test_24_many_tokens_cannot_exceed_outstanding_budget(server_node, clie
             for i in range(4):
                 sess = f"session-{i}"
                 tok = _forge(
-                    s, holder=client_node.spiffe_id, cnf=c.key.thumbprint,
-                    tools={"payments:read"}, budget=1_000_000, ttl=3600,
-                    now=now, audience=b.spiffe_id, session=sess,
+                    s,
+                    holder=client_node.spiffe_id,
+                    cnf=c.key.thumbprint,
+                    tools={"payments:read"},
+                    budget=1_000_000,
+                    ttl=3600,
+                    now=now,
+                    audience=b.spiffe_id,
+                    session=sess,
                 )
                 try:
                     await _invoke_raw(
-                        ch, token=tok, signer=c.key,
-                        verifier_id=b.spiffe_id, now=now, session=sess,
+                        ch,
+                        token=tok,
+                        signer=c.key,
+                        verifier_id=b.spiffe_id,
+                        now=now,
+                        session=sess,
                     )
                     codes.append("OK")
                 except RemoteError as exc:
@@ -1857,11 +2037,16 @@ async def test_24_many_tokens_cannot_exceed_outstanding_budget(server_node, clie
         assert codes == ["OK", "OK", "OK", "OUTSTANDING_BUDGET_EXCEEDED"]
 
 
-
 async def test_25_admit_unit():
-    row = cc.Entitlement(cnf=frozenset({"k"}), tools=frozenset({"t"}), audience=frozenset({"a"}),
-                      max_budget_micros=100, max_ttl_seconds=60,
-                      max_outstanding_budget_micros=150, max_live_tokens=2)
+    row = cc.Entitlement(
+        cnf=frozenset({"k"}),
+        tools=frozenset({"t"}),
+        audience=frozenset({"a"}),
+        max_budget_micros=100,
+        max_ttl_seconds=60,
+        max_outstanding_budget_micros=150,
+        max_live_tokens=2,
+    )
     t = cc.EntitlementTable({("i", "h"): row})
 
     def chk(d, j, budget, exp=1000):
@@ -1873,12 +2058,9 @@ async def test_25_admit_unit():
         return ei.value.code
 
     t.admit(chk("d1", "j1", 100), now=0)
-    t.admit(chk("d1", "j1", 100), now=0)                          # same token: idempotent
-    assert code(chk("d2", "j1", 100)) == "JTI_CONFLICT"           # same jti, different bytes
+    t.admit(chk("d1", "j1", 100), now=0)  # same token: idempotent
+    assert code(chk("d2", "j1", 100)) == "JTI_CONFLICT"  # same jti, different bytes
     assert code(chk("d3", "j3", 100)) == "OUTSTANDING_BUDGET_EXCEEDED"
-    t.admit(chk("d4", "j4", 50), now=0)                           # exactly 150
+    t.admit(chk("d4", "j4", 50), now=0)  # exactly 150
     assert code(chk("d5", "j5", 0)) == "TOO_MANY_LIVE_TOKENS"
-    t.admit(chk("d6", "j6", 100, exp=5000), now=2000)             # earlier tokens expired
-
-
-
+    t.admit(chk("d6", "j6", 100, exp=5000), now=2000)  # earlier tokens expired

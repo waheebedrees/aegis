@@ -10,11 +10,12 @@ CAVEAT — asyncio.start_server(ssl=ctx):
     it so leaf certs rotate, but the trust store still accumulates.
     Prefer accept + wrap_socket using IdentityService.current.server_ctx.
 """
+
 from __future__ import annotations
-import hashlib
 
 import asyncio
 import datetime
+import hashlib
 import hmac
 import logging
 import os
@@ -22,17 +23,13 @@ import ssl
 import tempfile
 import threading
 import urllib.parse
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import (
     Any,
-    Awaitable,
-    Callable,
-    Iterator,
-    Optional,
-    Protocol,
-    Sequence,
     Union,
 )
+
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import dsa, ec, ed25519, rsa
@@ -70,7 +67,6 @@ PublicKeyTypes = Union[
 ]
 
 
-
 class IdentityError(Exception):
     """Infrastructure failure (Workload API, PEM, socket). Map to 503, not 400."""
 
@@ -80,7 +76,6 @@ class IdentityError(Exception):
         self.detail = detail
 
 
-
 @dataclass(frozen=True, slots=True)
 class SpiffeId:
     uri: str
@@ -88,52 +83,46 @@ class SpiffeId:
     path: str
 
     @classmethod
-    def parse(cls, uri: str) -> "SpiffeId":
+    def parse(cls, uri: str) -> SpiffeId:
         if not isinstance(uri, str) or not uri or len(uri) > 2048:
             raise IdentityError("INVALID_SPIFFE_ID", "bad length or type")
         parsed = urllib.parse.urlsplit(uri)
         if parsed.scheme != "spiffe":
-            raise IdentityError("INVALID_SPIFFE_ID",
-                                f"scheme={parsed.scheme!r}")
+            raise IdentityError("INVALID_SPIFFE_ID", f"scheme={parsed.scheme!r}")
         if parsed.query or parsed.fragment or parsed.username or parsed.port:
-            raise IdentityError("INVALID_SPIFFE_ID",
-                                "forbidden URI components")
+            raise IdentityError("INVALID_SPIFFE_ID", "forbidden URI components")
         td = parsed.netloc
         if (
             not td
             or len(td) > 255
             or any(c not in "abcdefghijklmnopqrstuvwxyz0123456789._-" for c in td)
         ):
-            raise IdentityError("INVALID_SPIFFE_ID",
-                                f"invalid trust domain {td!r}")
+            raise IdentityError("INVALID_SPIFFE_ID", f"invalid trust domain {td!r}")
         if not parsed.path or parsed.path.endswith("/") or "//" in parsed.path:
-            raise IdentityError("INVALID_SPIFFE_ID",
-                                f"invalid path {parsed.path!r}")
+            raise IdentityError("INVALID_SPIFFE_ID", f"invalid path {parsed.path!r}")
         for seg in parsed.path.split("/")[1:]:
             if seg in ("", ".", ".."):
-                raise IdentityError("INVALID_SPIFFE_ID",
-                                    f"dot segment in {uri!r}")
+                raise IdentityError("INVALID_SPIFFE_ID", f"dot segment in {uri!r}")
         return cls(uri=f"spiffe://{td}{parsed.path}", trust_domain=td, path=parsed.path)
 
     def __str__(self) -> str:
         return self.uri
 
 
-
 def _utc_now() -> datetime.datetime:
-    return datetime.datetime.now(datetime.timezone.utc)
+    return datetime.datetime.now(datetime.UTC)
 
 
 def _cert_not_after(cert: x509.Certificate) -> datetime.datetime:
     if hasattr(cert, "not_valid_after_utc"):
         return cert.not_valid_after_utc
-    return cert.not_valid_after.replace(tzinfo=datetime.timezone.utc)
+    return cert.not_valid_after.replace(tzinfo=datetime.UTC)
 
 
 def _cert_not_before(cert: x509.Certificate) -> datetime.datetime:
     if hasattr(cert, "not_valid_before_utc"):
         return cert.not_valid_before_utc
-    return cert.not_valid_before.replace(tzinfo=datetime.timezone.utc)
+    return cert.not_valid_before.replace(tzinfo=datetime.UTC)
 
 
 def _cert_expiry_ts(cert: x509.Certificate) -> int:
@@ -154,22 +143,24 @@ def _public_keys_equal(a: object, b: object) -> bool:
         return False
 
 
-
 def _load_workload_client():
     try:
-        from spiffe import WorkloadApiClient as _C # type: ignore
+        from spiffe import WorkloadApiClient as _C  # type: ignore
+
         return _C
     except ImportError:
         pass
     try:
-        from spiffe.workloadapi.client import Client as _C # type: ignore
+        from spiffe.workloadapi.client import Client as _C  # type: ignore
+
         return _C
     except ImportError:
         pass
     try:
-        from pyspiffe.workloadapi.default_workload_api_client import ( # type: ignore
+        from pyspiffe.workloadapi.default_workload_api_client import (  # type: ignore
             DefaultWorkloadApiClient as _C,
         )
+
         return _C
     except ImportError:
         pass
@@ -194,7 +185,6 @@ def _make_client(socket_path: str | None = None):
     return _load_workload_client()(socket_path=_workload_socket(socket_path))
 
 
-
 def _cert_to_pem(cert) -> bytes:
     if isinstance(cert, x509.Certificate):
         return cert.public_bytes(serialization.Encoding.PEM)
@@ -202,14 +192,12 @@ def _cert_to_pem(cert) -> bytes:
         raw = bytes(cert)
         if raw.startswith(b"-----BEGIN"):
             return raw
-        return x509.load_der_x509_certificate(raw).public_bytes(
-            serialization.Encoding.PEM
-        )
+        return x509.load_der_x509_certificate(raw).public_bytes(serialization.Encoding.PEM)
     for attr in ("pem", "to_pem"):
         val = getattr(cert, attr, None)
         if callable(val):
             out = val()
-            return out.encode("ascii") if isinstance(out, str) else bytes(out) # type: ignore
+            return out.encode("ascii") if isinstance(out, str) else bytes(out)  # type: ignore
         if isinstance(val, str):
             return val.encode("ascii")
         if isinstance(val, (bytes, bytearray)):
@@ -239,7 +227,9 @@ def _extract_private_key(svid) -> PrivateKeyTypes:
             key = serialization.load_pem_private_key(blob, password=None)
         else:
             key = load_der_private_key(blob, password=None)
-        if not isinstance(key, (ec.EllipticCurvePrivateKey, ed25519.Ed25519PrivateKey, rsa.RSAPrivateKey)):
+        if not isinstance(
+            key, (ec.EllipticCurvePrivateKey, ed25519.Ed25519PrivateKey, rsa.RSAPrivateKey)
+        ):
             raise IdentityError("SVID_KEY_UNKNOWN", type(key).__name__)
         return key
     if hasattr(raw, "private_bytes"):
@@ -249,7 +239,9 @@ def _extract_private_key(svid) -> PrivateKeyTypes:
             serialization.NoEncryption(),
         )
         key = serialization.load_pem_private_key(pem, password=None)
-        if not isinstance(key, (ec.EllipticCurvePrivateKey, ed25519.Ed25519PrivateKey, rsa.RSAPrivateKey)):
+        if not isinstance(
+            key, (ec.EllipticCurvePrivateKey, ed25519.Ed25519PrivateKey, rsa.RSAPrivateKey)
+        ):
             raise IdentityError("SVID_KEY_UNKNOWN", type(key).__name__)
         return key
     raise IdentityError("SVID_KEY_UNKNOWN", type(raw).__name__)
@@ -272,8 +264,7 @@ def _leaf_cert(cert) -> x509.Certificate:
 
 def _spiffe_id_from_cert(cert: x509.Certificate) -> SpiffeId:
     try:
-        san = cert.extensions.get_extension_for_class(
-            x509.SubjectAlternativeName).value
+        san = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
     except x509.ExtensionNotFound as e:
         raise IdentityError("SVID_NO_SAN", "") from e
     uris = [
@@ -306,18 +297,15 @@ def _validate_leaf(leaf: x509.Certificate, key: PrivateKeyTypes, now: datetime.d
     if not (_cert_not_before(leaf) - skew <= now <= _cert_not_after(leaf) + skew):
         raise IdentityError("SVID_EXPIRED", _cert_not_after(leaf).isoformat())
     try:
-        bc = leaf.extensions.get_extension_for_class(
-            x509.BasicConstraints).value
+        bc = leaf.extensions.get_extension_for_class(x509.BasicConstraints).value
         if bc.ca:
-            raise IdentityError("CA_CERT_FORBIDDEN",
-                                "leaf X.509-SVID must have CA=False")
+            raise IdentityError("CA_CERT_FORBIDDEN", "leaf X.509-SVID must have CA=False")
     except x509.ExtensionNotFound:
         pass
     if isinstance(key.public_key(), dsa.DSAPublicKey):
         raise IdentityError("UNSUPPORTED_KEY_TYPE", "DSA")
     if not _public_keys_equal(leaf.public_key(), key.public_key()):
-        raise IdentityError("SVID_KEY_MISMATCH",
-                            "private key does not match leaf certificate")
+        raise IdentityError("SVID_KEY_MISMATCH", "private key does not match leaf certificate")
 
 
 def _base_context(ctx: ssl.SSLContext) -> ssl.SSLContext:
@@ -343,6 +331,7 @@ def client_ctx(*, certfile: str, keyfile: str, cafile: str) -> ssl.SSLContext:
     ctx.load_verify_locations(cafile=cafile)
     return ctx
 
+
 def _build_tls13_contexts(
     cert_pem: bytes,
     key_pem: bytes,
@@ -357,21 +346,21 @@ def _build_tls13_contexts(
     bundle_file = os.path.join(tmpdir, "bundle.pem")
 
     def _write(path: str, data: bytes, mode: int) -> None:
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(
-            os, "O_NOFOLLOW", 0)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(path, flags, mode)
         try:
             os.write(fd, data)
             os.fsync(fd)
         finally:
             os.close(fd)
+
     try:
         _write(cert_file, cert_pem, 0o600)
         _write(key_file, key_pem, 0o600)
         _write(bundle_file, bundle_pem, 0o644)
         return (
             server_ctx(certfile=cert_file, keyfile=key_file, cafile=bundle_file),
-            client_ctx(certfile=cert_file, keyfile=key_file, cafile=bundle_file)
+            client_ctx(certfile=cert_file, keyfile=key_file, cafile=bundle_file),
         )
     finally:
         for p in (key_file, cert_file, bundle_file):
@@ -385,13 +374,11 @@ def _build_tls13_contexts(
             pass
 
 
-
-
 @dataclass(frozen=True, slots=True)
 class IdentitySnapshot:
     spiffe: SpiffeId
-    credential_id: str             # x509-sha256:<hex sha256 of leaf DER>
-    bundle_digest: str             # sha256:<hex sha256 of bundle PEM>
+    credential_id: str  # x509-sha256:<hex sha256 of leaf DER>
+    bundle_digest: str  # sha256:<hex sha256 of bundle PEM>
     private_key_id: str
     private_key: PrivateKeyTypes
     leaf_cert_der: bytes
@@ -399,11 +386,12 @@ class IdentitySnapshot:
     server_ctx: ssl.SSLContext
     client_ctx: ssl.SSLContext
     expires_at: datetime.datetime
+
     @property
     def remain(self) -> float:
         """Seconds until expiry; negative once the SVID has expired."""
         return (self.expires_at - _utc_now()).total_seconds()
-    
+
     @property
     def spiffe_id(self) -> str:
         return self.spiffe.uri
@@ -413,13 +401,15 @@ class IdentitySnapshot:
         return self.spiffe.trust_domain
 
     @classmethod
-    def from_pem(cls, cert_pem: bytes, key_pem: bytes, bundle_pem: bytes) -> "IdentitySnapshot":
+    def from_pem(cls, cert_pem: bytes, key_pem: bytes, bundle_pem: bytes) -> IdentitySnapshot:
         certs = x509.load_pem_x509_certificates(cert_pem)
         if not certs:
             raise IdentityError("EMPTY_SVID_CHAIN", "")
         leaf = certs[0]
         key = serialization.load_pem_private_key(key_pem, password=None)
-        if not isinstance(key, (ec.EllipticCurvePrivateKey, ed25519.Ed25519PrivateKey, rsa.RSAPrivateKey)):
+        if not isinstance(
+            key, (ec.EllipticCurvePrivateKey, ed25519.Ed25519PrivateKey, rsa.RSAPrivateKey)
+        ):
             raise IdentityError("UNSUPPORTED_PRIVATE_KEY", type(key).__name__)
         now = _utc_now()
         _validate_leaf(leaf, key, now)
@@ -427,9 +417,11 @@ class IdentitySnapshot:
         anchors = tuple(x509.load_pem_x509_certificates(bundle_pem))
         if not anchors:
             raise IdentityError("EMPTY_TRUST_BUNDLE", "")
-        server_ctx, client_ctx = _build_tls13_contexts(
-            cert_pem, key_pem, bundle_pem)
-        credential_id = "x509-sha256:" + hashlib.sha256(leaf.public_bytes(serialization.Encoding.DER)).hexdigest()
+        server_ctx, client_ctx = _build_tls13_contexts(cert_pem, key_pem, bundle_pem)
+        credential_id = (
+            "x509-sha256:"
+            + hashlib.sha256(leaf.public_bytes(serialization.Encoding.DER)).hexdigest()
+        )
         bundle_digest = "sha256:" + hashlib.sha256(bundle_pem).hexdigest()
         key_der = key.private_bytes(
             serialization.Encoding.DER,
@@ -452,7 +444,7 @@ class IdentitySnapshot:
         )
 
     @classmethod
-    def from_workload(cls, svid, bundles) -> "IdentitySnapshot":
+    def from_workload(cls, svid, bundles) -> IdentitySnapshot:
         chain = _extract_chain(svid)
         if not chain:
             raise IdentityError("SVID_EMPTY_CHAIN", "")
@@ -466,20 +458,20 @@ class IdentitySnapshot:
         td = svid.spiffe_id.trust_domain
         bundle = bundles.get_bundle_for_trust_domain(td)
         if bundle is None or not bundle.x509_authorities:
-            raise IdentityError( "ANCHOR_INCONSISTENT",f"no bundle for {td!r}")
+            raise IdentityError("ANCHOR_INCONSISTENT", f"no bundle for {td!r}")
 
         bundle_pem = b"".join(
-            a.public_bytes(serialization.Encoding.PEM)
-            for a in bundle.x509_authorities
+            a.public_bytes(serialization.Encoding.PEM) for a in bundle.x509_authorities
         )
         anchors = tuple(x509.load_pem_x509_certificates(bundle_pem))
         if not anchors:
             raise IdentityError("EMPTY_TRUST_BUNDLE", spiffe.trust_domain)
-        server_ctx, client_ctx = _build_tls13_contexts(
-            cert_pem, key_pem, bundle_pem)
-        credential_id = "x509-sha256:" + hashlib.sha256(leaf.public_bytes(serialization.Encoding.DER)).hexdigest()
+        server_ctx, client_ctx = _build_tls13_contexts(cert_pem, key_pem, bundle_pem)
+        credential_id = (
+            "x509-sha256:"
+            + hashlib.sha256(leaf.public_bytes(serialization.Encoding.DER)).hexdigest()
+        )
         bundle_digest = "sha256:" + hashlib.sha256(bundle_pem).hexdigest()
-
 
         key_der = key.private_bytes(
             serialization.Encoding.DER,
@@ -503,6 +495,7 @@ class IdentitySnapshot:
 
 
 # Disk material is optional (debug / HEALTHCHECK sidecars). Not used for TLS.
+
 
 @dataclass(frozen=True, slots=True)
 class SVIDMaterial:
@@ -549,8 +542,7 @@ def materialize(svid, bundles, *, out_dir: str) -> SVIDMaterial:
     key_path = os.path.join(out_dir, "svid.key")
     bundle_path = os.path.join(out_dir, "bundle.pem")
     chain_pem = b"".join(
-        x509.load_der_x509_certificate(
-            snap.leaf_cert_der).public_bytes(serialization.Encoding.PEM)
+        x509.load_der_x509_certificate(snap.leaf_cert_der).public_bytes(serialization.Encoding.PEM)
         for _ in (0,)
     )
     # Reconstruct cert PEM from the SVID we just validated:
@@ -558,8 +550,7 @@ def materialize(svid, bundles, *, out_dir: str) -> SVIDMaterial:
     # is debug-only. Write leaf + anchors.
     _write_secure(cert_path, chain_pem, 0o600)
     _write_secure(key_path, _private_key_pem(snap.private_key), 0o600)
-    bundle_pem = b"".join(a.public_bytes(serialization.Encoding.PEM)
-                          for a in snap.trust_anchors)
+    bundle_pem = b"".join(a.public_bytes(serialization.Encoding.PEM) for a in snap.trust_anchors)
     _write_secure(bundle_path, bundle_pem, 0o644)
     return SVIDMaterial(
         spiffe_id=snap.spiffe_id,
@@ -589,7 +580,6 @@ def load(*, out_dir: str, socket_path: str | None = None) -> SVIDMaterial:
         raise IdentityError("SVID_DIR_REQUIRED", "do not default to /tmp")
     client = _make_client(socket_path)
     return materialize(client.fetch_x509_svid(), client.fetch_x509_bundles(), out_dir=out_dir)
-
 
 
 OnSnapshot = Callable[[IdentitySnapshot], Awaitable[None] | None]
@@ -627,18 +617,16 @@ class SVIDWatcher:
         self._socket_path = socket_path
         self._allow_id_change = allow_id_change
         self._stop = threading.Event()
-        self._thread: Optional[threading.Thread] = None
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._known_id: Optional[SpiffeId] = None
+        self._thread: threading.Thread | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._known_id: SpiffeId | None = None
 
     async def start(self) -> None:
         if self._thread is not None:
             raise RuntimeError("watcher already started")
         self._stop.clear()
         self._loop = asyncio.get_running_loop()
-        self._thread = threading.Thread(
-            target=self._run, name="svid-watcher", daemon=True
-        )
+        self._thread = threading.Thread(target=self._run, name="svid-watcher", daemon=True)
         self._thread.start()
 
     async def stop(self, timeout: float = 5.0) -> None:
@@ -655,16 +643,16 @@ class SVIDWatcher:
                 self._watch_once()
                 backoff = 1.0
             except Exception as e:
-                log.warning("svid watch restarting: %s: %s",
-                            type(e).__name__, e)
+                log.warning("svid watch restarting: %s: %s", type(e).__name__, e)
                 self._stop.wait(backoff)
                 backoff = min(backoff * 2, 30.0)
+
     def _dispatch(self, snap: IdentitySnapshot) -> None:
         loop = self._loop
         if loop is None or loop.is_closed():
             return
         result = self._on_snapshot(snap)
-        
+
         if asyncio.iscoroutine(result):
             fut = asyncio.run_coroutine_threadsafe(result, loop)
             try:
@@ -672,9 +660,8 @@ class SVIDWatcher:
             except Exception:
                 log.exception("on_snapshot failed")
 
-
     def _watch_once(self) -> None:
-        from spiffe import X509Source           # type: ignore # HPE spiffe package
+        from spiffe import X509Source  # type: ignore # HPE spiffe package
 
         sock = _workload_socket(self._socket_path)
         # __init__ blocks until the first update (or raises on timeout/error)
@@ -705,14 +692,11 @@ class SVIDWatcher:
                 except Exception:
                     log.exception("ignoring bad SVID update")
 
-
             source.subscribe_for_updates(on_update)
             try:
                 while not self._stop.is_set():
-
                     if source.is_closed():
-                        log.warning("X509Source closed: %r",
-                                    getattr(source, "_error", None))
+                        log.warning("X509Source closed: %r", getattr(source, "_error", None))
                         raise IdentityError(
                             "SOURCE_CLOSED",
                             "X509Source closed by underlying Workload API error",
@@ -720,7 +704,7 @@ class SVIDWatcher:
                     self._stop.wait(1.0)
             finally:
                 source.unsubscribe_for_updates(on_update)
-                
+
         finally:
             source.close()
 
@@ -738,7 +722,7 @@ class IdentityService:
         self._lock = threading.Lock()
         self._snapshot = snapshot
         self._watchers: list[Callable[[IdentitySnapshot], None]] = []
-        self._watcher: Optional[SVIDWatcher] = None
+        self._watcher: SVIDWatcher | None = None
 
     @property
     def current(self) -> IdentitySnapshot:
@@ -746,15 +730,13 @@ class IdentityService:
             return self._snapshot
 
     @classmethod
-    def from_pem(cls, cert_pem: bytes, key_pem: bytes, bundle_pem: bytes) -> "IdentityService":
+    def from_pem(cls, cert_pem: bytes, key_pem: bytes, bundle_pem: bytes) -> IdentityService:
         return cls(IdentitySnapshot.from_pem(cert_pem, key_pem, bundle_pem))
 
     @classmethod
-    def fetch(cls, *, socket_path: str | None = None) -> "IdentityService":
+    def fetch(cls, *, socket_path: str | None = None) -> IdentityService:
         client = _make_client(socket_path)
-        snap = IdentitySnapshot.from_workload(
-            client.fetch_x509_svid(), client.fetch_x509_bundles()
-        )
+        snap = IdentitySnapshot.from_workload(client.fetch_x509_svid(), client.fetch_x509_bundles())
         return cls(snap)
 
     def subscribe(self, fn: Callable[[IdentitySnapshot], None]) -> None:
@@ -769,9 +751,9 @@ class IdentityService:
                     f"{prev.spiffe.uri} -> {snapshot.spiffe.uri}",
                 )
             if snapshot.credential_id == prev.credential_id:
-                return              # ← same SVID, nothing to notify
+                return  # ← same SVID, nothing to notify
             self._snapshot = snapshot
-            
+
         log.info(
             "svid rotated: %s credential_id=%s bundle_digest=%s remain=%.0fs",
             snapshot.spiffe.uri,
@@ -784,7 +766,7 @@ class IdentityService:
                 fn(snapshot)
             except Exception:
                 log.exception("identity subscriber failed")
-                
+
     async def start_watch(self, *, socket_path: str | None = None) -> None:
         if self._watcher is not None:
             raise RuntimeError("already watching")
@@ -799,7 +781,6 @@ class IdentityService:
         if self._watcher is not None:
             await self._watcher.stop(timeout=timeout)
             self._watcher = None
-
 
 
 class SSLContextHolder:
@@ -925,15 +906,13 @@ async def cli() -> int:
     snap = identity.identity
     log.info(f"{snap.current.bundle_digest=}")
     log.info(f"{snap.current.credential_id=}")
-    
+
     log.info(f"{snap.current.remain=}")
     return 0 if await check_health() else 1
 
 
-
-
 def line(tag: str, snap: IdentitySnapshot) -> None:
-    now = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S")
+    now = datetime.datetime.now(datetime.UTC).strftime("%H:%M:%S")
     print(
         f"{now} {tag:<7} "
         f"cred={snap.credential_id[12:24]}… "
@@ -950,14 +929,13 @@ async def main() -> None:
     async def on_rotate(snap: IdentitySnapshot) -> None:
         line("ROTATE", snap)
 
-
     def on(s):
-         asyncio.create_task(on_rotate(s))
-    
+        asyncio.create_task(on_rotate(s))
+
     boot.identity.subscribe(on)
 
     try:
-        await asyncio.Event().wait()          # run forever
+        await asyncio.Event().wait()  # run forever
     finally:
         await boot.stop()
 

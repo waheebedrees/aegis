@@ -58,9 +58,7 @@ from .capchain import (
     Code,
     RejectError,
     encode,
-    decode,
 )
-
 
 _log = logging.getLogger("capchain.store")
 
@@ -185,10 +183,10 @@ class Evidence:
         ).hexdigest()
 
 
-
 # ---------------------------------------------------------------------------
 # Protocols (all async)
 # ---------------------------------------------------------------------------
+
 
 class EnrollmentStore(Protocol):
     """Bindings from workload identity to enrolled key thumbprint."""
@@ -248,6 +246,7 @@ class EvidenceStore(Protocol):
 # ---------------------------------------------------------------------------
 # In-memory implementations (async, asyncio.Lock)
 # ---------------------------------------------------------------------------
+
 
 class InMemoryEnrollments:
     """Development enrollment store with a fixed TTL."""
@@ -314,9 +313,11 @@ class InMemoryBudgetLedger:
         dead = [
             cid
             for cid, exp in self._expires_at.items()
-            if (exp <= now
+            if (
+                exp <= now
                 and cid not in outstanding_cids
-                and self._remaining.get(cid, 0) == self._root_cap.get(cid, 0))
+                and self._remaining.get(cid, 0) == self._root_cap.get(cid, 0)
+            )
         ]
         if not dead:
             return 0
@@ -442,9 +443,7 @@ class InMemoryBudgetLedger:
             if record is None or record.state != ReservationState.RESERVED:
                 return
             self._outstanding.pop(handle.handle, None)
-            self._remaining[record.cid] = (
-                self._remaining.get(record.cid, 0) + record.amount
-            )
+            self._remaining[record.cid] = self._remaining.get(record.cid, 0) + record.amount
             for jti, _ in record.path:
                 key = (record.cid, jti)
                 self._hop_spent[key] = max(
@@ -717,6 +716,7 @@ def _lua_reply(raw: object) -> str:
 # ---------------------------------------------------------------------------
 # Redis implementations (redis.asyncio)
 # ---------------------------------------------------------------------------
+
 
 class RedisReplayStore:
     def __init__(self, client: object, ttl_seconds: int, prefix: str) -> None:
@@ -1084,6 +1084,7 @@ async def migrate(dsn: str | None = None, schema: str = "capchain") -> None:
 # PostgreSQL implementations (psycopg_pool.AsyncConnectionPool)
 # ---------------------------------------------------------------------------
 
+
 class _Pg:
     def __init__(self, pool: object) -> None:
         self._pool = pool
@@ -1258,8 +1259,7 @@ class PostgresBudgetLedger(_Pg):
                 (cid, root_cap, root_cap, expires_at if expires_at is not None else 0),
             )
             await cur.execute(
-                "SELECT root_cap, remaining FROM budget_chains "
-                "WHERE cid = %s FOR UPDATE",
+                "SELECT root_cap, remaining FROM budget_chains WHERE cid = %s FOR UPDATE",
                 (cid,),
             )
             db_root, db_rem = await cur.fetchone()
@@ -1613,8 +1613,7 @@ class PostgresEnrollments(_Pg):
                 (peer_id,),
             )
             await cur.execute(
-                "DELETE FROM enrollments "
-                "WHERE peer_id = %s AND expires_at <= %s",
+                "DELETE FROM enrollments WHERE peer_id = %s AND expires_at <= %s",
                 (peer_id, now),
             )
             await cur.execute(
@@ -1671,6 +1670,7 @@ class PostgresEnrollments(_Pg):
 # Client pool (async)
 # ---------------------------------------------------------------------------
 
+
 class _AsyncClients:
     def __init__(self) -> None:
         self._redis: dict[str, object] = {}
@@ -1679,9 +1679,7 @@ class _AsyncClients:
 
     async def redis(self, url: str | None, prefix: str) -> tuple[object, str]:
         if not url:
-            raise ValueError(
-                "redis store requires redis_url / CAPCHAIN_REDIS_URL"
-            )
+            raise ValueError("redis store requires redis_url / CAPCHAIN_REDIS_URL")
         client = self._redis.get(url)
         if client is None:
             try:
@@ -1700,18 +1698,14 @@ class _AsyncClients:
 
     async def pool(self, dsn: str | None, schema: str) -> object:
         if not dsn:
-            raise ValueError(
-                "database store requires postgres_dsn / CAPCHAIN_POSTGRES_DSN"
-            )
+            raise ValueError("database store requires postgres_dsn / CAPCHAIN_POSTGRES_DSN")
         key = dsn + "\0" + schema
         pool = self.pg.get(key)
         if pool is None:
             try:
                 from psycopg_pool import AsyncConnectionPool
             except ImportError as e:
-                raise RuntimeError(
-                    "pip install 'psycopg[binary]>=3.1' 'psycopg-pool>=3.2'"
-                ) from e
+                raise RuntimeError("pip install 'psycopg[binary]>=3.1' 'psycopg-pool>=3.2'") from e
             pool = AsyncConnectionPool(
                 dsn,
                 min_size=1,
@@ -1755,9 +1749,7 @@ async def _open_ledger(spec: StoreSpec, clients: _AsyncClients) -> object:
     if spec.type == "redis":
         client, prefix = await clients.redis(spec.redis_url, spec.prefix)
         return RedisBudgetLedger(client, prefix=prefix)
-    return PostgresBudgetLedger(
-        await clients.pool(spec.postgres_dsn, spec.schema)
-    )
+    return PostgresBudgetLedger(await clients.pool(spec.postgres_dsn, spec.schema))
 
 
 async def _open_revocation(spec: StoreSpec, clients: _AsyncClients) -> object:
@@ -1766,9 +1758,7 @@ async def _open_revocation(spec: StoreSpec, clients: _AsyncClients) -> object:
     if spec.type == "redis":
         client, prefix = await clients.redis(spec.redis_url, spec.prefix)
         return RedisRevocationStore(client, prefix=prefix)
-    return PostgresRevocationStore(
-        await clients.pool(spec.postgres_dsn, spec.schema)
-    )
+    return PostgresRevocationStore(await clients.pool(spec.postgres_dsn, spec.schema))
 
 
 async def _open_evidence(spec: StoreSpec, clients: _AsyncClients) -> object:
@@ -1777,9 +1767,7 @@ async def _open_evidence(spec: StoreSpec, clients: _AsyncClients) -> object:
     if spec.type == "redis":
         client, prefix = await clients.redis(spec.redis_url, spec.prefix)
         return RedisEvidenceLog(client, prefix=prefix)
-    return PostgresEvidenceLog(
-        await clients.pool(spec.postgres_dsn, spec.schema)
-    )
+    return PostgresEvidenceLog(await clients.pool(spec.postgres_dsn, spec.schema))
 
 
 async def _open_enrollments(spec: StoreSpec, clients: _AsyncClients) -> object:
@@ -1804,6 +1792,7 @@ async def _open_enrollments(spec: StoreSpec, clients: _AsyncClients) -> object:
 # ---------------------------------------------------------------------------
 # Helpers (unchanged)
 # ---------------------------------------------------------------------------
+
 
 def _dump_path(path: tuple) -> str:
     return json.dumps(
@@ -1874,8 +1863,7 @@ async def _check_redis(
     if any durable store is backed by Redis (ledger, revocation, evidence,
     enrollments). Replay-only deployments may skip AOF."""
     uses_redis_for_durable = any(
-        spec.type == "redis"
-        and name in ("ledger", "revocation", "evidence", "enrollments")
+        spec.type == "redis" and name in ("ledger", "revocation", "evidence", "enrollments")
         for name, spec in specs
     )
     for client in clients._redis.values():
@@ -1884,9 +1872,7 @@ async def _check_redis(
             policy = cfg.get("maxmemory-policy", "noeviction")
         except Exception as e:
             if env == "production":
-                raise RuntimeError(
-                    "cannot verify Redis maxmemory-policy"
-                ) from e
+                raise RuntimeError("cannot verify Redis maxmemory-policy") from e
             _log.warning(
                 "capchain: Redis policy check skipped: %s",
                 type(e).__name__,
@@ -1904,9 +1890,7 @@ async def _check_redis(
             try:
                 info = await client.info("persistence")
             except Exception as e:
-                raise RuntimeError(
-                    "cannot verify Redis AOF state"
-                ) from e
+                raise RuntimeError("cannot verify Redis AOF state") from e
             if not info.get("aof_enabled"):
                 raise RuntimeError(
                     "Redis AOF is off; capchain requires AOF in production "
@@ -1917,6 +1901,7 @@ async def _check_redis(
 # ---------------------------------------------------------------------------
 # Stores container (async)
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class Stores:
@@ -2029,8 +2014,7 @@ class Stores:
             )
         if evidence.type == "redis":
             _log.warning(
-                "capchain: Redis evidence is not an insert-only log; "
-                "prefer database for evidence"
+                "capchain: Redis evidence is not an insert-only log; prefer database for evidence"
             )
         return built
 
@@ -2042,13 +2026,9 @@ class Stores:
         prefix = os.environ.get("CAPCHAIN_REDIS_PREFIX", "capchain")
         schema = os.environ.get("CAPCHAIN_POSTGRES_SCHEMA", "capchain")
         try:
-            max_per_peer = int(
-                os.environ.get("CAPCHAIN_ENROLL_MAX_PER_PEER", "8")
-            )
+            max_per_peer = int(os.environ.get("CAPCHAIN_ENROLL_MAX_PER_PEER", "8"))
         except ValueError as e:
-            raise RuntimeError(
-                f"CAPCHAIN_ENROLL_MAX_PER_PEER: {e}"
-            ) from None
+            raise RuntimeError(f"CAPCHAIN_ENROLL_MAX_PER_PEER: {e}") from None
 
         def one(
             name: str,
@@ -2127,6 +2107,7 @@ class Stores:
 # ---------------------------------------------------------------------------
 # Contract test and selftest (async)
 # ---------------------------------------------------------------------------
+
 
 def _draft(action_id: str = "a1") -> dict:
     return {

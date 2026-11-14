@@ -1,12 +1,12 @@
 from .identity import (
-    bootstrap,
     Bootstrap,
     IdentityError,
     IdentityService,
-    IdentitySnapshot,   
-    SSLContextHolder, 
-    SVIDMaterial, 
-    SVIDWatcher, 
+    IdentitySnapshot,
+    SSLContextHolder,
+    SVIDMaterial,
+    SVIDWatcher,
+    bootstrap,
 )
 
 __all__ = [
@@ -18,5 +18,4 @@ __all__ = [
     "SSLContextHolder",
     "SVIDMaterial",
     "SVIDWatcher",
-
 ]

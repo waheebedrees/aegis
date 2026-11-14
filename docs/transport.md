@@ -723,7 +723,10 @@ write. This is simpler and has no queue to overflow.
 
 ```python
 from libs.transport.tls import (
-    SpiffeAdapter, TlsConnection, TlsPolicy, DEFAULT_TLS_POLICY,
+    SpiffeAdapter,
+    TlsConnection,
+    TlsPolicy,
+    DEFAULT_TLS_POLICY,
 )
 from libs.transport.stream.frame import FrameStream
 from libs.transport.stream.stream_session import Transport, TransportConfig
@@ -736,13 +739,21 @@ adapter = SpiffeAdapter(
 )
 
 reader, writer = await asyncio.open_connection(
-    host, port, ssl=ssl_ctx, server_hostname=None,  # SPIFFE uses URI SAN
+    host,
+    port,
+    ssl=ssl_ctx,
+    server_hostname=None,  # SPIFFE uses URI SAN
 )
 tls = await TlsConnection.awrap(
-    reader, writer, adapter=adapter, policy=DEFAULT_TLS_POLICY,
+    reader,
+    writer,
+    adapter=adapter,
+    policy=DEFAULT_TLS_POLICY,
 )
 transport = await Transport.establish(
-    tls, TransportConfig(max_streams=32), is_client=True,
+    tls,
+    TransportConfig(max_streams=32),
+    is_client=True,
 )
 
 try:
@@ -763,10 +774,15 @@ finally:
 ```python
 async def handle(reader, writer):
     tls = await TlsConnection.awrap(
-        reader, writer, adapter=server_adapter, policy=DEFAULT_TLS_POLICY,
+        reader,
+        writer,
+        adapter=server_adapter,
+        policy=DEFAULT_TLS_POLICY,
     )
     transport = await Transport.establish(
-        tls, TransportConfig(max_streams=256), is_client=False,
+        tls,
+        TransportConfig(max_streams=256),
+        is_client=False,
     )
     try:
         while not transport.closed:
@@ -951,15 +967,21 @@ Every function above has a corresponding test in `selftest.py` (or should).
 
 ```python
 """Minimum viable client + server over the v4 transport."""
+
 import asyncio
 import ssl
 
 from libs.transport.tls import (
-    SpiffeAdapter, TlsConnection, DEFAULT_TLS_POLICY,
+    SpiffeAdapter,
+    TlsConnection,
+    DEFAULT_TLS_POLICY,
 )
 from libs.transport.stream.frame import FrameStream
 from libs.transport.stream.stream_session import (
-    Stream, StreamError, Transport, TransportConfig,
+    Stream,
+    StreamError,
+    Transport,
+    TransportConfig,
 )
 
 
@@ -976,7 +998,9 @@ async def serve(reader, writer):
         print("TLS rejected:", exc)
         return
     transport = await Transport.establish(
-        tls, TransportConfig(max_streams=64), is_client=False,
+        tls,
+        TransportConfig(max_streams=64),
+        is_client=False,
     )
     try:
         while not transport.closed:
@@ -1020,11 +1044,16 @@ async def connect():
     ctx.set_alpn_protocols(["aegis/v1"])
 
     reader, writer = await asyncio.open_connection(
-        "server.example.com", 8443, ssl=ctx, server_hostname=None,
+        "server.example.com",
+        8443,
+        ssl=ctx,
+        server_hostname=None,
     )
     tls = await TlsConnection.awrap(reader, writer, adapter=adapter)
     transport = await Transport.establish(
-        tls, TransportConfig(max_streams=32), is_client=True,
+        tls,
+        TransportConfig(max_streams=32),
+        is_client=True,
     )
     try:
         stream = await transport.open_stream(kind="chat")

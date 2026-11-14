@@ -233,6 +233,7 @@ state = _State()
 # Error / output helpers
 # ═════════════════════════════════════════════════════════════════════════
 
+
 def _die(msg: str, code: int = 2) -> typer.Exit:
     stderr.print(f"[bold red]error:[/bold red] {escape(msg)}")
     return typer.Exit(code)
@@ -285,6 +286,7 @@ def _split(s: str) -> list[str]:
 # Load / decode
 # ═════════════════════════════════════════════════════════════════════════
 
+
 def _load(path: Path) -> dict:
     try:
         with path.open("rb") as fh:
@@ -312,6 +314,7 @@ def _load_decoded(path: Path) -> dict:
 # Render / save
 # ═════════════════════════════════════════════════════════════════════════
 
+
 def _fmt_time(v: Any) -> str:
     if isinstance(v, dt.datetime):
         if v.tzinfo is None:
@@ -338,7 +341,7 @@ def _show_time(v: Any) -> str:
 def _enc_scope(s: dict) -> str:
     parts = [
         "tools = [" + ", ".join(f'"{t}"' for t in s["tools"]) + "]",
-        f'budget = {s["budget"]}',
+        f"budget = {s['budget']}",
         "audience = [" + ", ".join(f'"{a}"' for a in s["audience"]) + "]",
     ]
     if s.get("domains"):
@@ -350,11 +353,11 @@ def _enc_cost(c: dict, *, with_tool: bool) -> str:
     parts = []
     if with_tool:
         parts.append(f'tool = "{c["tool"]}"')
-    parts.append(f'base_micros = {c["base_micros"]}')
+    parts.append(f"base_micros = {c['base_micros']}")
     if c.get("per_kib_micros"):
-        parts.append(f'per_kib_micros = {c["per_kib_micros"]}')
+        parts.append(f"per_kib_micros = {c['per_kib_micros']}")
     if c.get("max_micros") is not None:
-        parts.append(f'max_micros = {c["max_micros"]}')
+        parts.append(f"max_micros = {c['max_micros']}")
     return "{ " + ", ".join(parts) + " }"
 
 
@@ -362,7 +365,7 @@ def _render(doc: dict) -> str:
     L: list[str] = [
         "# Managed by gov.py. Comments are not preserved across mutations.",
         "",
-        f'version = {doc["version"]}',
+        f"version = {doc['version']}",
         f"not_before = {_fmt_time(doc['not_before'])}",
         f"expires_at = {_fmt_time(doc['expires_at'])}",
         "",
@@ -380,19 +383,17 @@ def _render(doc: dict) -> str:
     p = doc["policy"]
     L += [
         "[policy]",
-        f'max_depth = {p["max_depth"]}',
+        f"max_depth = {p['max_depth']}",
         "models = [" + ", ".join(f'"{m}"' for m in p["models"]) + "]",
-        "peer_bound_tools = ["
-        + ", ".join(f'"{t}"' for t in p.get("peer_bound_tools", []))
-        + "]",
+        "peer_bound_tools = [" + ", ".join(f'"{t}"' for t in p.get("peer_bound_tools", [])) + "]",
         "edges = [",
     ]
     for e in p["edges"]:
         L.append(
             f'  {{ parent = "{e["parent"]}", child = "{e["child"]}", '
-            f'max_ttl = {e["max_ttl"]}, '
-            f'max_children = {e["max_children"]}, '
-            f'ceiling = {_enc_scope(e["ceiling"])} }},'
+            f"max_ttl = {e['max_ttl']}, "
+            f"max_children = {e['max_children']}, "
+            f"ceiling = {_enc_scope(e['ceiling'])} }},"
         )
     L.append("]")
     L.append("")
@@ -401,10 +402,10 @@ def _render(doc: dict) -> str:
         L += [
             "[[issuance]]",
             f'holder = "{r["holder"]}"',
-            f'ttl = {r["ttl"]}',
-            f'max_depth = {r["max_depth"]}',
+            f"ttl = {r['ttl']}",
+            f"max_depth = {r['max_depth']}",
             f'model = "{r["model"]}"',
-            f'scope = {_enc_scope(r["scope"])}',
+            f"scope = {_enc_scope(r['scope'])}",
             "",
         ]
 
@@ -413,9 +414,9 @@ def _render(doc: dict) -> str:
         L += [
             "[enrollment]",
             f'may_enroll = "{e["may_enroll"]}"',
-            f'ttl = {e["ttl"]}',
+            f"ttl = {e['ttl']}",
             f'model = "{e["model"]}"',
-            f'ceiling = {_enc_scope(e["ceiling"])}',
+            f"ceiling = {_enc_scope(e['ceiling'])}",
             "",
         ]
 
@@ -425,7 +426,7 @@ def _render(doc: dict) -> str:
         L.append(f"  {_enc_cost(r, with_tool=True)},")
     L.append("]")
     if doc["pricing"].get("default"):
-        L.append(f'default = {_enc_cost(doc["pricing"]["default"], with_tool=False)}')
+        L.append(f"default = {_enc_cost(doc['pricing']['default'], with_tool=False)}")
     L.append("")
     return "\n".join(L)
 
@@ -489,6 +490,7 @@ def _scope(tools: str, budget: int, audience: str, domains: str = "") -> dict:
 # Key generation
 # ═════════════════════════════════════════════════════════════════════════
 
+
 def _generate_keypair(pub_path: Path, seed_path: Path) -> None:
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -514,6 +516,7 @@ def _generate_keypair(pub_path: Path, seed_path: Path) -> None:
 # ═════════════════════════════════════════════════════════════════════════
 # Callback
 # ═════════════════════════════════════════════════════════════════════════
+
 
 def _version_callback(value: bool) -> None:
     if value:
@@ -551,6 +554,7 @@ def _main_callback(
 # gen-keys
 # ═════════════════════════════════════════════════════════════════════════
 
+
 @app.command("gen-keys")
 def gen_keys(
     directory: Annotated[Path, typer.Option("--dir", help="Key directory")] = Path("keys"),
@@ -584,6 +588,7 @@ def gen_keys(
 # ═════════════════════════════════════════════════════════════════════════
 # init
 # ═════════════════════════════════════════════════════════════════════════
+
 
 @app.command("init")
 def init(
@@ -689,22 +694,20 @@ def _render_node_toml(d: dict) -> str:
         f'cert_file     = "{p(d["tls"]["cert_file"])}"',
         f'key_file      = "{p(d["tls"]["key_file"])}"',
         f'ca_file       = "{p(d["tls"]["ca_file"])}"',
-        'trust_domains = ['
-        + ", ".join(f'"{x}"' for x in d["tls"]["trust_domains"])
-        + "]",
+        "trust_domains = [" + ", ".join(f'"{x}"' for x in d["tls"]["trust_domains"]) + "]",
         "",
         "[governance]",
         f'bundle_file             = "{p(d["governance"]["bundle_file"])}"',
         f'state_file              = "{p(d["governance"]["state_file"])}"',
-        'authority_keys          = ['
+        "authority_keys          = ["
         + ", ".join(f'"{k}"' for k in d["governance"]["authority_keys"])
         + "]",
-        f'reload_interval_seconds = {d["governance"]["reload_interval_seconds"]}',
-        f'min_version             = {d["governance"]["min_version"]}',
+        f"reload_interval_seconds = {d['governance']['reload_interval_seconds']}",
+        f"min_version             = {d['governance']['min_version']}",
         "",
     ]
     if "listen" in d:
-        L += ["[listen]", f'host = "{d["listen"]["host"]}"', f'port = {d["listen"]["port"]}', ""]
+        L += ["[listen]", f'host = "{d["listen"]["host"]}"', f"port = {d['listen']['port']}", ""]
     if "stores" in d:
         L += ["[stores]", f'backend = "{d["stores"]["backend"]}"', ""]
     for name in sorted(d.get("peers", {})):
@@ -730,7 +733,9 @@ def gen_node(
     spiffe_id: Annotated[str, typer.Option("--spiffe-id")],
     environment: Annotated[str, typer.Option("--environment")] = "development",
     listen: Annotated[str | None, typer.Option("--listen", help="HOST:PORT")] = None,
-    peer: Annotated[list[str], typer.Option("--peer", help="NAME=HOST:PORT@SPIFFE_ID (repeatable)")] = [],
+    peer: Annotated[
+        list[str], typer.Option("--peer", help="NAME=HOST:PORT@SPIFFE_ID (repeatable)")
+    ] = [],
     authority: Annotated[Path, typer.Option("--authority")] = Path("keys/authority.pub"),
     bundle: Annotated[Path, typer.Option("--bundle")] = Path("config/governance.bundle"),
     cert: Annotated[Path | None, typer.Option("--cert")] = None,
@@ -752,7 +757,7 @@ def gen_node(
     if stores_backend not in ("memory", "redis", "database"):
         raise BadParameter(f"unknown stores backend {stores_backend!r}")
     _check_spiffe(spiffe_id)
-    domain = spiffe_id[len("spiffe://"):].split("/", 1)[0]
+    domain = spiffe_id[len("spiffe://") :].split("/", 1)[0]
 
     out = out or Path(f"config/node-{name}.toml")
     if out.exists() and not force:
@@ -844,6 +849,7 @@ def gen_node(
 # ═════════════════════════════════════════════════════════════════════════
 # show / validate / sign
 # ═════════════════════════════════════════════════════════════════════════
+
 
 def _summarize(doc: dict) -> dict:
     return {
@@ -984,7 +990,9 @@ def validate(
 def sign(
     key: Annotated[Path, typer.Option("--key", help="Authority SEED (current)")],
     out: Annotated[Path, typer.Option("--out", help="Bundle output path")],
-    next_key: Annotated[Path | None, typer.Option("--next-key", help="Authority SEED (rotation)")] = None,
+    next_key: Annotated[
+        Path | None, typer.Option("--next-key", help="Authority SEED (rotation)")
+    ] = None,
 ) -> None:
     """Compile governance.toml and sign the bundle."""
     try:
@@ -997,7 +1005,11 @@ def sign(
     except (OSError, ValueError) as exc:
         raise _die(f"key error: {exc}", 2)
 
-    raw = sign_bundle_with_rotation(doc, current, nxt) if nxt is not None else sign_bundle(doc, current)
+    raw = (
+        sign_bundle_with_rotation(doc, current, nxt)
+        if nxt is not None
+        else sign_bundle(doc, current)
+    )
 
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_name(out.name + ".tmp")
@@ -1014,6 +1026,7 @@ def sign(
 # ═════════════════════════════════════════════════════════════════════════
 # Trust roots
 # ═════════════════════════════════════════════════════════════════════════
+
 
 def _do_set_issuer(action: str, spiffe: str, key: Path | None, *, dry_run: bool) -> None:
     doc = _load_decoded(state.file)
@@ -1109,6 +1122,7 @@ def set_issuer_remove(
 # Enrollment
 # ═════════════════════════════════════════════════════════════════════════
 
+
 @app.command("set-enrollment-key")
 def set_enrollment_key(
     key: Annotated[Path, typer.Option("--key")],
@@ -1151,6 +1165,7 @@ def set_enrollment_policy(
 # Policy
 # ═════════════════════════════════════════════════════════════════════════
 
+
 @app.command("set-policy")
 def set_policy(
     max_depth: Annotated[int | None, typer.Option("--max-depth", min=0)] = None,
@@ -1174,6 +1189,7 @@ def set_policy(
 # ═════════════════════════════════════════════════════════════════════════
 # Edges
 # ═════════════════════════════════════════════════════════════════════════
+
 
 @app.command("add-edge")
 def add_edge(
@@ -1212,7 +1228,9 @@ def add_edge(
 def remove_edge(
     parent: Annotated[str, typer.Option("--parent")],
     child: Annotated[str, typer.Option("--child")],
-    force: Annotated[bool, typer.Option("--force", help="Remove even if orphaned issuance exists")] = False,
+    force: Annotated[
+        bool, typer.Option("--force", help="Remove even if orphaned issuance exists")
+    ] = False,
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
 ) -> None:
     """Remove an edge identified by (parent, child)."""
@@ -1227,8 +1245,7 @@ def remove_edge(
     orphans = [r for r in doc.get("issuance", []) if r["holder"] == child]
     if orphans and not force:
         raise _die(
-            f"{len(orphans)} issuance rule(s) target {child}; "
-            "remove them first or pass --force"
+            f"{len(orphans)} issuance rule(s) target {child}; remove them first or pass --force"
         )
     if orphans:
         _warn(f"removing edge will orphan {len(orphans)} issuance rule(s)")
@@ -1240,6 +1257,7 @@ def remove_edge(
 # ═════════════════════════════════════════════════════════════════════════
 # Issuance
 # ═════════════════════════════════════════════════════════════════════════
+
 
 @app.command("add-issuance")
 def add_issuance(
@@ -1290,6 +1308,7 @@ def remove_issuance(
 # Pricing
 # ═════════════════════════════════════════════════════════════════════════
 
+
 @app.command("add-pricing")
 def add_pricing(
     tool: Annotated[str, typer.Option("--tool")],
@@ -1312,7 +1331,9 @@ def add_pricing(
 @app.command("remove-pricing")
 def remove_pricing(
     tool: Annotated[str, typer.Option("--tool")],
-    force: Annotated[bool, typer.Option("--force", help="Write even if the result is invalid")] = False,
+    force: Annotated[
+        bool, typer.Option("--force", help="Write even if the result is invalid")
+    ] = False,
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
 ) -> None:
     """Remove a pricing rule by exact tool name."""
@@ -1346,6 +1367,7 @@ def set_default_pricing(
 # ═════════════════════════════════════════════════════════════════════════
 # Entry point
 # ═════════════════════════════════════════════════════════════════════════
+
 
 def main() -> None:
     try:

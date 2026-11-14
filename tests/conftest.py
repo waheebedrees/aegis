@@ -1,10 +1,10 @@
 """Shared fixtures for the aegis transport test suite."""
+
 from __future__ import annotations
 
 
-
 import pytest
-import sys 
+import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
@@ -15,9 +15,7 @@ from libs.transport.tls import TlsConnection
 pytestmark = pytest.mark.asyncio
 
 
-
 from local_pki import PKI
-
 
 
 @pytest.fixture
@@ -33,4 +31,3 @@ def server_node(pki):
 @pytest.fixture
 def client_node(pki):
     return pki.make_node("node-2", "127.0.0.1", 0)
-

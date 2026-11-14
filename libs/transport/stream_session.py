@@ -31,7 +31,7 @@ import struct
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from libs.transport.frame import (
     FIXED_OVERHEAD,
@@ -45,7 +45,6 @@ from libs.transport.frame import (
     OPEN_MAX_TOKEN,
     PING_NONCE_BYTES,
     STREAM_MAC_BYTES,
-    Flags,
     Frame,
     FrameError,
     FrameStream,
@@ -81,14 +80,14 @@ __all__ = [
 
 PROTOCOL_VERSION = 4
 FEATURE_STREAMS = 0x0001
-FEATURES = FEATURE_STREAMS            # exact match; unknown bits are rejected
+FEATURES = FEATURE_STREAMS  # exact match; unknown bits are rejected
 
 MAC_LEN = STREAM_MAC_BYTES
 MIN_MAX_FRAME = 64 * 1024
 MIN_STREAM_WINDOW = 4 * 1024
 MAX_STREAM_WINDOW = 1024 * 1024
 MAX_STREAMS = 256
-MAX_BUFFERED = 32 * 1024 * 1024       # per side, data buffers only
+MAX_BUFFERED = 32 * 1024 * 1024  # per side, data buffers only
 PER_STREAM_OVERHEAD = OPEN_MAX_TOKEN + OPEN_MAX_POP + OPEN_MAX_BODY
 MAX_STREAM_OVERHEAD = 4 * 1024 * 1024  # per side, retained OPEN metadata
 
@@ -102,7 +101,7 @@ RETIRED_RING_FACTOR = 8
 # SESSION_INIT body: version, features, max_frame, stream_window, max_streams
 _HELLO = struct.Struct(">HIIIH")
 _CHUNK_DOMAIN = b"aegis/stream-chunk/v4"
-_CHUNK_HDR = struct.Struct(">IQBI")   # stream_id, seq, fin, len(data)
+_CHUNK_HDR = struct.Struct(">IQBI")  # stream_id, seq, fin, len(data)
 
 
 class TransportError(Exception):
@@ -143,7 +142,7 @@ def _addr(writer: object) -> str:
 
 
 def _pos(value: object, name: str) -> None:
-    if type(value) not in (int, float) or not math.isfinite(value) or value <= 0: # type: ignore
+    if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:  # type: ignore
         raise ValueError(f"{name} must be a finite positive number")
 
 
@@ -153,6 +152,7 @@ def _bounded(value: object, name: str, lo: int, hi: int) -> None:
 
 
 # ───────────────────────── chunk authentication ─────────────────────────
+
 
 @runtime_checkable
 class StreamSigner(Protocol):
@@ -165,9 +165,7 @@ class StreamSigner(Protocol):
 
     def sign(self, stream_id: int, seq: int, fin: bool, data: bytes) -> bytes: ...
 
-    def verify(
-        self, stream_id: int, seq: int, fin: bool, data: bytes, mac: bytes
-    ) -> None: ...
+    def verify(self, stream_id: int, seq: int, fin: bool, data: bytes, mac: bytes) -> None: ...
 
 
 class HmacStreamSigner:
@@ -201,9 +199,7 @@ class HmacStreamSigner:
     def sign(self, stream_id: int, seq: int, fin: bool, data: bytes) -> bytes:
         return self._mac(self._send_key, stream_id, seq, fin, data)
 
-    def verify(
-        self, stream_id: int, seq: int, fin: bool, data: bytes, mac: bytes
-    ) -> None:
+    def verify(self, stream_id: int, seq: int, fin: bool, data: bytes, mac: bytes) -> None:
         expected = self._mac(self._recv_key, stream_id, seq, fin, data)
         if not hmac.compare_digest(expected, mac):
             raise StreamError("MAC_MISMATCH", str(stream_id))
@@ -222,23 +218,26 @@ class TransportConfig:
     stream_idle_timeout: float = 300.0
     skew: float = 30.0
 
-    
     def __post_init__(self) -> None:
         _bounded(self.max_frame, "max_frame", MIN_MAX_FRAME, MAX_FRAME_BYTES)
         _bounded(self.max_streams, "max_streams", 1, MAX_STREAMS)
-        _bounded(self.stream_window, "stream_window",
-                 MIN_STREAM_WINDOW, MAX_STREAM_WINDOW)
+        _bounded(self.stream_window, "stream_window", MIN_STREAM_WINDOW, MAX_STREAM_WINDOW)
         if self.max_streams * self.stream_window > MAX_BUFFERED:
             raise ValueError("max_streams * stream_window exceeds MAX_BUFFERED")
         if self.max_streams * PER_STREAM_OVERHEAD > MAX_STREAM_OVERHEAD:
-            raise ValueError("max_streams * per-stream OPEN metadata exceeds "
-                             "MAX_STREAM_OVERHEAD")
+            raise ValueError("max_streams * per-stream OPEN metadata exceeds MAX_STREAM_OVERHEAD")
         # A single maximal chunk must fit in our own advertised frame size,
         # otherwise the peer could never use the window we advertise.
         if FIXED_OVERHEAD + MAC_LEN + 8 + min(self.stream_window, MAX_CHUNK_BYTES) > self.max_frame:
             raise ValueError("max_frame too small for stream_window")
-        for name in ("handshake_timeout", "write_timeout", "idle_timeout",
-                     "frame_timeout", "ping_interval", "stream_idle_timeout"):
+        for name in (
+            "handshake_timeout",
+            "write_timeout",
+            "idle_timeout",
+            "frame_timeout",
+            "ping_interval",
+            "stream_idle_timeout",
+        ):
             _pos(getattr(self, name), name)
         if self.idle_timeout < 2 * self.ping_interval:
             raise ValueError("idle_timeout must be >= 2 * ping_interval")
@@ -251,17 +250,35 @@ class Stream:
     or delivered by Transport.accept (server)."""
 
     __slots__ = (
-        "_t", "_sid", "_kind", "_peer_window", "_window",
-        "_open_body", "_open_payload", "_open_token", "_open_pop", "_signer",
-        "_send_seq", "_send_sent", "_send_granted", "_send_fin",
-        "_send_lock", "_send_ev",
-        "_recv_seq", "_recv_buffered", "_buf", "_remote_fin",
-        "_recv_lock", "_recv_ev", "_reset", "_touched",
+        "_t",
+        "_sid",
+        "_kind",
+        "_peer_window",
+        "_window",
+        "_open_body",
+        "_open_payload",
+        "_open_token",
+        "_open_pop",
+        "_signer",
+        "_send_seq",
+        "_send_sent",
+        "_send_granted",
+        "_send_fin",
+        "_send_lock",
+        "_send_ev",
+        "_recv_seq",
+        "_recv_buffered",
+        "_buf",
+        "_remote_fin",
+        "_recv_lock",
+        "_recv_ev",
+        "_reset",
+        "_touched",
     )
 
     def __init__(
         self,
-        transport: "Transport",
+        transport: Transport,
         sid: int,
         *,
         kind: str,
@@ -276,26 +293,26 @@ class Stream:
         self._t = transport
         self._sid = sid
         self._kind = kind
-        self._peer_window = peer_window      # our send budget (peer's advert)
-        self._window = window                # our receive budget (our config)
+        self._peer_window = peer_window  # our send budget (peer's advert)
+        self._window = window  # our receive budget (our config)
         self._open_body = open_body
         self._open_payload = open_payload
         self._open_token = open_token
         self._open_pop = open_pop
         self._signer = signer
         self._send_seq = 0
-        self._send_sent = 0                  # payload bytes written
-        self._send_granted = 0               # payload bytes credited by peer
+        self._send_sent = 0  # payload bytes written
+        self._send_granted = 0  # payload bytes credited by peer
         self._send_fin = False
         self._send_lock = asyncio.Lock()
         self._send_ev = asyncio.Event()
         self._recv_seq = 0
-        self._recv_buffered = 0              # arrived, not yet dequeued
+        self._recv_buffered = 0  # arrived, not yet dequeued
         self._buf: deque[tuple[int, bytes, bool, bytes]] = deque()
         self._remote_fin = False
         self._recv_lock = asyncio.Lock()
         self._recv_ev = asyncio.Event()
-        self._reset: Optional[str] = None
+        self._reset: str | None = None
         self._touched = time.monotonic()
 
     # read-only views
@@ -321,7 +338,7 @@ class Stream:
         return self._open_pop
 
     @property
-    def reset_reason(self) -> Optional[str]:
+    def reset_reason(self) -> str | None:
         return self._reset
 
     @property
@@ -335,25 +352,32 @@ class Stream:
     @property
     def peer_id(self):
         return self._t.peer_id
-    
-    def __repr__(self) -> str:
-        return (f"<Stream sid={self._sid} kind={self._kind!r} "
-                f"reset={self._reset!r}>")
 
-    def set_signer(self, signer: StreamSigner) -> None:
-        """Override the default exporter-derived signer. Must be called before
-        the first send or recv on this stream."""
-        if self._send_seq or self._recv_seq or self._buf:
-            raise StreamError("ALREADY_ACTIVE")
-        if not isinstance(signer, StreamSigner):
-            raise StreamError("BAD_SIGNER")
-        self._signer = signer
+    @property
+    def peer_window(self) -> int:
+        return self._peer_window
+
+    @property
+    def binding(self):
+        return self._t.peer_id
+
+    @property
+    def max_chunk(self) -> int:
+        """Largest data chunk the peer will accept on this stream."""
+        return max(
+            0,
+            min(
+                MAX_CHUNK_BYTES,
+                self._peer_window,
+                self._t._peer_max_frame - (FIXED_OVERHEAD + MAC_LEN + 8),
+            ),
+        )
+
+    def __repr__(self) -> str:
+        return f"<Stream sid={self._sid} kind={self._kind!r} reset={self._reset!r}>"
 
     # send
-
-    async def send(
-        self, data: bytes, *, fin: bool = False, timeout: Optional[float] = None
-    ) -> None:
+    async def send(self, data: bytes, *, fin: bool = False, timeout: float | None = None) -> None:
         if type(data) is not bytes:
             raise StreamError("BAD_DATA", type(data).__name__)
         if type(fin) is not bool:
@@ -374,7 +398,7 @@ class Stream:
             else:
                 try:
                     await asyncio.wait_for(self._await_credit(len(data)), timeout)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     raise StreamError("CREDIT_TIMEOUT", str(self._sid)) from None
             self._check_sendable()
 
@@ -393,9 +417,7 @@ class Stream:
             if type(mac) is not bytes or len(mac) != MAC_LEN:
                 raise StreamError("BAD_MAC")
 
-            frame = make_stream_data(
-                stream_id=self._sid, seq=seq, data=data, mac=mac, fin=fin
-            )
+            frame = make_stream_data(stream_id=self._sid, seq=seq, data=data, mac=mac, fin=fin)
 
             # Commit before the write. A failed write tears the whole
             # connection down, so no partial state can survive it.
@@ -427,7 +449,7 @@ class Stream:
 
     # receive
 
-    async def recv(self, *, timeout: Optional[float] = None) -> Optional[bytes]:
+    async def recv(self, *, timeout: float | None = None) -> bytes | None:
         """Next verified chunk. b"" is a zero-length FIN chunk; None means the
         peer has finished sending and the buffer is drained."""
         async with self._recv_lock:
@@ -436,7 +458,7 @@ class Stream:
             else:
                 try:
                     head = await asyncio.wait_for(self._next_chunk(), timeout)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     raise StreamError("RECV_TIMEOUT", str(self._sid)) from None
             if head is None:
                 return None
@@ -456,10 +478,9 @@ class Stream:
             self._buf.popleft()
             self._recv_buffered -= len(data)
             self._touched = time.monotonic()
-            self._t._grant(self, len(data))      # credit returns on dequeue only
+            self._t._grant(self, len(data))  # credit returns on dequeue only
             self._t._retire_if_done(self)
             return data
-
 
     async def _next_chunk(self):
         while True:
@@ -475,6 +496,32 @@ class Stream:
             if self._buf or self._remote_fin or self._reset is not None:
                 continue
             await self._recv_ev.wait()
+
+    async def send_all(self, data: bytes, *, timeout: float | None = None) -> None:
+        """Write `data` in peer-sized chunks and half-close."""
+        if type(data) is not bytes:
+            raise StreamError("BAD_DATA", type(data).__name__)
+        step = self.max_chunk
+        if step <= 0:
+            raise StreamError("NO_ROOM", "peer frame/window too small")
+        for off in range(0, len(data), step):
+            await self.send(data[off : off + step], timeout=timeout)
+        await self.send(b"", fin=True, timeout=timeout)
+
+    async def recv_all(self, limit: int, timeout: float | None = None) -> bytes:
+        """Read until FIN, bounded by `limit` bytes. Over-limit cancels the stream."""
+        parts: list[bytes] = []
+        total = 0
+        while True:
+            chunk = await self.recv(timeout=timeout)
+            if chunk is None:
+                return b"".join(parts)
+            total += len(chunk)
+            if total > limit:
+                self.cancel("body_too_large")
+                raise StreamError("BODY_TOO_LARGE", str(total))
+            if chunk:
+                parts.append(chunk)
 
     # lifecycle
 
@@ -494,7 +541,7 @@ class Stream:
         if self._reset is None and not self.recv_closed:
             self.cancel("closed")
 
-    async def __aenter__(self) -> "Stream":
+    async def __aenter__(self) -> Stream:
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
@@ -504,23 +551,47 @@ class Stream:
             await self.aclose()
 
 
-
 class Transport:
     """Use Transport.establish(). The client opens streams; the server accepts."""
 
     __slots__ = (
-        "_config", "_is_client", "_peer_id", "_tag", "_fs", "_signer",
-        "_peer_max_frame", "_peer_window", "_peer_max_streams", "_inbound_limit",
-        "_streams", "_pending", "_accept_ev", "_next_sid", "_last_peer_sid",
-        "_max_sid", "_retired", "_retired_set", "_retired_cap", "_stale_bytes",
-        "_cancels", "_credits", "_pong", "_outstanding_pings",
-        "_ctl_ev", "_stop_ev", "_stop_code", "_stop_notify", "_stopping",
-        "_down", "_closed", "_reader", "_workers", "_supervisor",
+        "_config",
+        "_is_client",
+        "_peer_id",
+        "_tag",
+        "_fs",
+        "_signer",
+        "_peer_max_frame",
+        "_peer_window",
+        "_peer_max_streams",
+        "_inbound_limit",
+        "_streams",
+        "_pending",
+        "_accept_ev",
+        "_next_sid",
+        "_last_peer_sid",
+        "_max_sid",
+        "_retired",
+        "_retired_set",
+        "_retired_cap",
+        "_stale_bytes",
+        "_cancels",
+        "_credits",
+        "_pong",
+        "_outstanding_pings",
+        "_ctl_ev",
+        "_stop_ev",
+        "_stop_code",
+        "_stop_notify",
+        "_stopping",
+        "_down",
+        "_closed",
+        "_reader",
+        "_workers",
+        "_supervisor",
     )
 
-    def __init__(
-        self, tls: TlsConnection, config: TransportConfig, *, is_client: bool
-    ) -> None:
+    def __init__(self, tls: TlsConnection, config: TransportConfig, *, is_client: bool) -> None:
         if not isinstance(config, TransportConfig):
             raise TypeError("config must be a TransportConfig")
         if type(is_client) is not bool:
@@ -529,12 +600,10 @@ class Transport:
         self._config = config
         self._is_client = is_client
         self._peer_id = tls.peer_id
-        self._tag = (
-            f"cid={secrets.token_hex(6)} peer={_safe(tls.peer_id)} "
-            f"addr={_addr(tls.writer)}"
-        )
+        self._tag = f"cid={secrets.token_hex(6)} peer={_safe(tls.peer_id)} addr={_addr(tls.writer)}"
         self._fs = FrameStream(
-            tls.reader, tls.writer,
+            tls.reader,
+            tls.writer,
             write_timeout=config.write_timeout,
         )
         send_ikm, recv_ikm = tls.secrets.for_role(is_client)
@@ -545,40 +614,40 @@ class Transport:
         self._peer_max_streams = 0
         self._inbound_limit = HANDSHAKE_MAX_PAYLOAD
 
-        self._streams: dict[int, Stream] = {}      # all live streams
-        self._pending: dict[int, Stream] = {}      # subset awaiting accept()
+        self._streams: dict[int, Stream] = {}  # all live streams
+        self._pending: dict[int, Stream] = {}  # subset awaiting accept()
         self._accept_ev = asyncio.Event()
-        self._next_sid = 1                         # client only: odd ids
+        self._next_sid = 1  # client only: odd ids
         self._last_peer_sid = 0
-        self._max_sid = 0                          # highest id seen, either way
+        self._max_sid = 0  # highest id seen, either way
 
         self._retired_cap = RETIRED_RING_FACTOR * config.max_streams
         self._retired: deque[int] = deque()
         self._retired_set: set[int] = set()
         self._stale_bytes = 0
 
-        self._cancels: dict[int, str] = {}         # pending CANCEL per stream
-        self._credits: dict[int, int] = {}         # pending WINDOW_UPDATE per stream
-        self._pong: Optional[bytes] = None         # latest PING nonce, one slot
+        self._cancels: dict[int, str] = {}  # pending CANCEL per stream
+        self._credits: dict[int, int] = {}  # pending WINDOW_UPDATE per stream
+        self._pong: bytes | None = None  # latest PING nonce, one slot
         self._outstanding_pings: deque[bytes] = deque()
 
         self._ctl_ev = asyncio.Event()
         self._stop_ev = asyncio.Event()
-        self._stop_code: Optional[str] = None
+        self._stop_code: str | None = None
         self._stop_notify = False
         self._stopping = False
         self._down = False
         self._closed = asyncio.Event()
 
-        self._reader: Optional[asyncio.Task] = None
+        self._reader: asyncio.Task | None = None
         self._workers: list[asyncio.Task] = []
-        self._supervisor: Optional[asyncio.Task] = None
+        self._supervisor: asyncio.Task | None = None
 
     # public API
     @classmethod
     async def establish(
         cls, tls: TlsConnection, config: TransportConfig, *, is_client: bool
-    ) -> "Transport":
+    ) -> Transport:
         try:
             self = cls(tls, config, is_client=is_client)
         except BaseException:
@@ -589,7 +658,7 @@ class Transport:
             raise
         try:
             await asyncio.wait_for(self._handshake(), config.handshake_timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             await self._shutdown("HANDSHAKE_TIMEOUT", notify=False)
             raise TransportError("HANDSHAKE_TIMEOUT", notify=False) from None
         except TransportError as exc:
@@ -610,7 +679,7 @@ class Transport:
                 self._reader,
                 loop.create_task(self._ping_loop()),
                 loop.create_task(self._control_loop()),
-                loop.create_task(self._expiry_loop(tls.not_after))
+                loop.create_task(self._expiry_loop(tls.not_after)),
             ]
             self._supervisor = loop.create_task(self._supervise())
         except BaseException:
@@ -619,14 +688,20 @@ class Transport:
 
         log.info(
             "transport up %s max_frame=%d window=%d streams=%d",
-            self._tag, self._peer_max_frame, self._peer_window,
+            self._tag,
+            self._peer_max_frame,
+            self._peer_window,
             self._peer_max_streams,
         )
         return self
 
     async def open_stream(
-        self, kind: str, payload: bytes = b"", *,
-        token: bytes = b"", pop: bytes = b"",
+        self,
+        kind: str,
+        payload: bytes = b"",
+        *,
+        token: bytes = b"",
+        pop: bytes = b"",
     ) -> Stream:
         if not self._is_client:
             raise StreamError("ROLE", "only the client opens streams")
@@ -651,7 +726,8 @@ class Transport:
 
         self._next_sid = sid + 2
         st = Stream(
-            self, sid,
+            self,
+            sid,
             kind=kind,
             peer_window=self._peer_window,
             window=self._config.stream_window,
@@ -669,16 +745,12 @@ class Transport:
             raise StreamError("CONN_CLOSED", self.close_reason or "")
         return st
 
-    async def accept(self, *, timeout: Optional[float] = None) -> Stream:
+    async def accept(self, *, timeout: float | None = None) -> Stream:
         """Next peer-opened stream. Streams reset before they were accepted are
         skipped, so a cancel storm can never block or overflow accept()."""
         if self._is_client:
             raise StreamError("ROLE", "client does not accept streams")
-        deadline = (
-            
-            None if timeout is None
-            else asyncio.get_running_loop().time() + timeout
-        )
+        deadline = None if timeout is None else asyncio.get_running_loop().time() + timeout
         while True:
             while self._pending:
                 sid, st = next(iter(self._pending.items()))
@@ -697,8 +769,9 @@ class Transport:
                 if rem <= 0:
                     raise StreamError("ACCEPT_TIMEOUT")
                 try:
-                    await asyncio.wait_for(self._accept_ev.wait(), rem)
-                except asyncio.TimeoutError:
+                    async with asyncio.timeout(rem):
+                        await self._accept_ev.wait()
+                except TimeoutError:
                     raise StreamError("ACCEPT_TIMEOUT") from None
 
     async def close(self, reason: str = "local") -> None:
@@ -717,25 +790,27 @@ class Transport:
         return self._closed.is_set()
 
     @property
-    def close_reason(self) -> Optional[str]:
+    def close_reason(self) -> str | None:
         return self._stop_code
 
     @property
     def active_streams(self) -> int:
         return len(self._streams)
 
-    async def __aenter__(self) -> "Transport":
+    async def __aenter__(self) -> Transport:
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         await self.close("context_exit" if exc_type is None else "aborted")
 
-
     async def _handshake(self) -> None:
         cfg = self._config
         mine = _HELLO.pack(
-            PROTOCOL_VERSION, FEATURES, cfg.max_frame,
-            cfg.stream_window, cfg.max_streams,
+            PROTOCOL_VERSION,
+            FEATURES,
+            cfg.max_frame,
+            cfg.stream_window,
+            cfg.max_streams,
         )
         # Both sides send first, then read: no role ordering dependency.
         if not await self._write(make_session_init(mine)):
@@ -774,7 +849,7 @@ class Transport:
         self._peer_max_streams = max_streams
 
     async def _expiry_loop(self, not_after):
-        deadline =  not_after - self._config.skew
+        deadline = not_after - self._config.skew
         while True:
             rem = deadline - time.time()
             if rem <= 0:
@@ -793,7 +868,7 @@ class Transport:
                 if isinstance(outcome, StreamClosed):
                     self._request_stop(f"read:{outcome.reason}", notify=False)
                     return
-                self._on_frame(outcome.frame)        # synchronous; never awaits
+                self._on_frame(outcome.frame)  # synchronous; never awaits
         except TransportError as exc:
             self._request_stop(exc.code, notify=exc.notify)
         except FrameError as exc:
@@ -808,13 +883,11 @@ class Transport:
         try:
             while True:
                 try:
-                    await asyncio.wait_for(
-                        self._stop_ev.wait(), self._config.ping_interval
-                    )
-                except asyncio.TimeoutError:
+                    await asyncio.wait_for(self._stop_ev.wait(), self._config.ping_interval)
+                except TimeoutError:
                     pass
                 else:
-                    return                           # stop requested
+                    return  # stop requested
                 if self._stopping:
                     return
                 self._sweep_idle()
@@ -851,9 +924,7 @@ class Transport:
                     sid, n = next(iter(self._credits.items()))
                     del self._credits[sid]
                     n = min(n, MAX_WINDOW_CREDIT)
-                    if not await self._write(
-                        make_window_update(stream_id=sid, credits=n)
-                    ):
+                    if not await self._write(make_window_update(stream_id=sid, credits=n)):
                         return
         except asyncio.CancelledError:
             raise
@@ -882,7 +953,7 @@ class Transport:
         elif t == FrameType.CANCEL:
             self._on_cancel(f)
         elif t == FrameType.PING:
-            self._pong = f.body                      # coalesce: keep the latest
+            self._pong = f.body  # coalesce: keep the latest
             self._ctl_ev.set()
         elif t == FrameType.PONG:
             self._on_pong(f)
@@ -915,7 +986,7 @@ class Transport:
         if self._stale_bytes > MAX_STALE_BYTES:
             raise TransportError("STALE_FLOOD", what)
 
-    def _lookup(self, f: Frame, what: str) -> Optional[Stream]:
+    def _lookup(self, f: Frame, what: str) -> Stream | None:
         st = self._streams.get(f.stream_id)
         if st is not None:
             return st
@@ -941,7 +1012,8 @@ class Transport:
             raise TransportError("BAD_OPEN", exc.code) from None
 
         st = Stream(
-            self, sid,
+            self,
+            sid,
             kind=kind,
             peer_window=self._peer_window,
             window=self._config.stream_window,
@@ -961,7 +1033,7 @@ class Transport:
     def _on_stream_data(self, f: Frame) -> None:
         st = self._lookup(f, "STREAM_DATA")
         if st is None:
-            return                                    # crossed CANCEL/FIN race
+            return  # crossed CANCEL/FIN race
         if st._remote_fin:
             raise TransportError("DATA_AFTER_FIN", str(f.stream_id))
         try:
@@ -972,14 +1044,13 @@ class Transport:
             raise TransportError("SEQ", f"{chunk.seq} != {st._recv_seq}")
         if st._recv_buffered + len(chunk.data) > st._window:
             raise TransportError("FLOW_CONTROL", str(f.stream_id))
-        
+
         st._recv_seq += 1
         st._recv_buffered += len(chunk.data)
         st._buf.append((chunk.seq, chunk.data, chunk.fin, chunk.mac))
         st._remote_fin = chunk.fin
         st._touched = time.monotonic()
         st._recv_ev.set()
-
 
     def _on_window_update(self, f: Frame) -> None:
         try:
@@ -1025,7 +1096,8 @@ class Transport:
         # Untrusted. Sanitized, logged, never parsed. Ends the session.
         log.warning(
             "peer ERROR (untrusted) %s: %s",
-            self._tag, _safe(f.body.decode("ascii", "replace"), 256),
+            self._tag,
+            _safe(f.body.decode("ascii", "replace"), 256),
         )
         raise TransportError("PEER_ERROR", notify=False)
 
@@ -1065,7 +1137,7 @@ class Transport:
         st._recv_ev.set()
         was_live = self._streams.get(st._sid) is st
         self._forget(st)
-        self._accept_ev.set()                        # unblock accept() scanners
+        self._accept_ev.set()  # unblock accept() scanners
         if notify and was_live and not self._stopping:
             self._cancels[st._sid] = safe_reason
             self._ctl_ev.set()
@@ -1085,7 +1157,7 @@ class Transport:
         self._stop_ev.set()
         self._ctl_ev.set()
         self._accept_ev.set()
-        for st in self._streams.values():            # wake blocked send/recv
+        for st in self._streams.values():  # wake blocked send/recv
             st._send_ev.set()
             st._recv_ev.set()
 
@@ -1152,5 +1224,3 @@ class Transport:
         finally:
             # Unconditional: close()/wait_closed() can never hang.
             self._closed.set()
-
-

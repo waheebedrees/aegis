@@ -1,7 +1,4 @@
-
-
-
-""" 
+"""
 The signed governance bundle
 delegation edges and policy:
 Edges are ordered; first match wins. Ceilings are checked at compile time
@@ -74,7 +71,6 @@ Local and unsigned, so it holds no policy and no secrets:
 Relative paths resolve against the config file's directory
 """
 
-
 from __future__ import annotations
 import base64
 import os
@@ -96,12 +92,8 @@ import hmac
 import json
 from typing import Any, Iterable, Mapping
 import re
-import tomllib 
-from config._schema import (
-    ConfigError, epoch, integer, spiffe, table, tables, text, texts, file_path, number
-)
-
-
+import tomllib
+from config._schema import ConfigError, epoch, integer, spiffe, table, tables, text, texts, number
 
 
 KEY_BYTES = 32
@@ -109,19 +101,18 @@ SEED_BYTES = 32
 _PATH_HINTS = (".pub", ".seed", ".key", ".bin")
 
 
-
 ROLES = frozenset({"gateway", "issuer", "agent", "tool"})
 ENVIRONMENTS = frozenset({"production", "development"})
 _REQUIREMENTS = {
     "gateway": ({"listen", "stores"}, {"tool"}),
-    "issuer":  ({"listen", "stores", "issuer"}, set()),
-    "agent":   (set(), {"gateway", "parent"}),
-    "tool":    ({"listen"}, {"gateway"}),
+    "issuer": ({"listen", "stores", "issuer"}, set()),
+    "agent": (set(), {"gateway", "parent"}),
+    "tool": ({"listen"}, {"gateway"}),
 }
 _PEER_NAME = re.compile(r"[a-z][a-z0-9._-]{0,31}")
 
 
-MAX_EDGES = 256   # capchain's canonical codec caps lists at 256
+MAX_EDGES = 256  # capchain's canonical codec caps lists at 256
 BUNDLE_FORMAT = 1
 CTX_GOVERNANCE = b"aegis/governance-bundle/v1"
 MAX_BUNDLE_BYTES = 1 << 20
@@ -136,6 +127,15 @@ EXPIRY_LOG_INTERVAL_SECONDS = 3600
 log = logging.getLogger(__name__)
 
 
+def file_path(value: Any, where: str, base: Path, *, must_exist: bool = True) -> Path:
+    path = Path(text(value, where, 4096))
+    path = path.resolve()
+    if not path.is_absolute():
+        path = base / path
+    path = path.resolve()
+    if must_exist and not path.is_file():
+        raise ConfigError(f"{where}: file not found: {path}")
+    return path
 
 
 def match_spiffe(pattern: str, concrete: str) -> bool:
@@ -150,16 +150,16 @@ def match_spiffe(pattern: str, concrete: str) -> bool:
         base = pattern[:-2]
         if not concrete.startswith(base + "/"):
             return False
-        rest = concrete[len(base) + 1:]
+        rest = concrete[len(base) + 1 :]
         return "/" not in rest and rest != ""
     return False
 
 
 @dataclass(frozen=True, slots=True)
 class EdgeRule:
-    parent: str             # pattern (may end with /*)
-    child: str              # pattern (may end with /*)
-    ceiling: cc.Scope       # max scope the child may receive under this edge
+    parent: str  # pattern (may end with /*)
+    child: str  # pattern (may end with /*)
+    ceiling: cc.Scope  # max scope the child may receive under this edge
     max_ttl: int
     max_children: int
 
@@ -202,8 +202,6 @@ class Policy:
         return issuer in self.root_issuers
 
 
-
-
 @dataclass(frozen=True, slots=True)
 class ToolCost:
     base_micros: int
@@ -224,10 +222,9 @@ class ToolCost:
         return total
 
 
-
 @dataclass(frozen=True, slots=True)
 class CostRule:
-    tool: str               # exact or ``namespace:*``
+    tool: str  # exact or ``namespace:*``
     cost: ToolCost
 
     def __post_init__(self) -> None:
@@ -240,13 +237,12 @@ class CostRule:
         if self.tool == tool:
             return True
         if self.tool.endswith(":*"):
-            return tool.startswith(self.tool[:-1])   # keep the colon
+            return tool.startswith(self.tool[:-1])  # keep the colon
         return False
 
 
 class StaticCostModel:
-    def __init__(self, rules: Iterable[CostRule], *,
-                 default: ToolCost | None = None) -> None:
+    def __init__(self, rules: Iterable[CostRule], *, default: ToolCost | None = None) -> None:
         self._rules = tuple(rules)
         self._default = default
         self._exact: dict[str, ToolCost] = {}
@@ -284,7 +280,6 @@ class StaticCostModel:
             return True
         ns, _, _ = tool.partition(":")
         return ns in self._wild
-    
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,20 +327,19 @@ class Governance:
 
     def check_live(self, now: int) -> None:
         if now + CLOCK_SKEW < self.not_before:
-            raise cc.error(cc.Code.STATE_UNAVAILABLE,
-                            f"governance v{self.version} not yet valid")
+            raise cc.error(cc.Code.STATE_UNAVAILABLE, f"governance v{self.version} not yet valid")
         if now >= self.expires_at:
-            raise cc.error(cc.Code.STATE_UNAVAILABLE,
-                            f"governance v{self.version} expired")
+            raise cc.error(cc.Code.STATE_UNAVAILABLE, f"governance v{self.version} expired")
 
 
 def _model(value: Any, where: str) -> str:
     m = text(value, where, 32)
     if m not in _KNOWN_MODELS:
         raise ConfigError(
-            f"{where}: {m!r} is not a capchain model "
-            f"(expected one of {sorted(_KNOWN_MODELS)})")
+            f"{where}: {m!r} is not a capchain model (expected one of {sorted(_KNOWN_MODELS)})"
+        )
     return m
+
 
 def _scope(value: Any, where: str) -> cc.Scope:
     t = table(value, where, ("tools", "budget", "audience"), ("domains",))
@@ -373,8 +367,7 @@ def _compile_cost(value: Any, where: str, *, with_tool: bool) -> dict:
     return out
 
 
-def _parse_cost(value: Any, where: str, *,
-                with_tool: bool) -> tuple[str | None, ToolCost]:
+def _parse_cost(value: Any, where: str, *, with_tool: bool) -> tuple[str | None, ToolCost]:
     keys = ("base", "per_kib", "max") + (("tool",) if with_tool else ())
     t = table(value, where, keys)
     try:
@@ -410,11 +403,7 @@ def _has_cycle(edges: list[EdgeRule]) -> bool:
         color[n] = BLACK
         return False
 
-    return any(
-        color.get(n, WHITE) == WHITE and visit(n)
-        for n in list(adj)
-    )
-
+    return any(color.get(n, WHITE) == WHITE and visit(n) for n in list(adj))
 
 
 def _encode(doc: Mapping[str, Any]) -> bytes:
@@ -438,25 +427,21 @@ def _no_duplicates(pairs: list[tuple[str, Any]]) -> dict:
 
 
 def _encode_envelope(envelope: Mapping[str, Any]) -> bytes:
-    return json.dumps(
-        envelope, sort_keys=True, separators=(",", ":")
-    ).encode("ascii")
-
-
-
-
-
-
-
+    return json.dumps(envelope, sort_keys=True, separators=(",", ":")).encode("ascii")
 
 
 class _State:
     """Persisted between restarts: (version, digest, authority_keys, next_keys)."""
+
     __slots__ = ("version", "digest", "authority_keys", "next_keys")
 
-    def __init__(self, version: int, digest: str,
-                 authority_keys: tuple[bytes, ...],
-                 next_keys: tuple[bytes, ...]) -> None:
+    def __init__(
+        self,
+        version: int,
+        digest: str,
+        authority_keys: tuple[bytes, ...],
+        next_keys: tuple[bytes, ...],
+    ) -> None:
         self.version = version
         self.digest = digest
         self.authority_keys = authority_keys
@@ -476,11 +461,9 @@ class GovernanceLoader:
         clock: Callable[[], int] = lambda: int(time.time()),
     ) -> None:
         if previous_authority_keys and previous_keys_expire_at is None:
-            raise ConfigError(
-                "previous_authority_keys requires previous_keys_expire_at")
+            raise ConfigError("previous_authority_keys requires previous_keys_expire_at")
         if previous_keys_expire_at is not None and not previous_authority_keys:
-            raise ConfigError(
-                "previous_keys_expire_at has no previous_authority_keys to bound")
+            raise ConfigError("previous_keys_expire_at has no previous_authority_keys to bound")
         self._bundle_file = Path(bundle_file)
         self._state_file = Path(state_file)
         self._authority_keys = tuple(authority_keys)
@@ -489,12 +472,27 @@ class GovernanceLoader:
         self._min_version = min_version
         self._clock = clock
 
+    @classmethod
+    def from_config(
+        cls,
+        gevernance: GovernanceConfig,
+        clock: Callable[[], int] = lambda: int(time.time()),
+    ):
+        return GovernanceLoader(
+            bundle_file=gevernance.bundle_file,
+            authority_keys=gevernance.authority_keys,
+            state_file=gevernance.state_file,
+            min_version=gevernance.min_version,
+            previous_authority_keys=gevernance.previous_authority_keys,
+            previous_keys_expire_at=gevernance.previous_keys_expire_at,
+            clock=clock,
+        )
+
     def load(self) -> Governance:
         try:
             raw = self._bundle_file.read_bytes()
         except OSError as exc:
-            raise ConfigError(
-                f"cannot read bundle {self._bundle_file}: {exc}") from None
+            raise ConfigError(f"cannot read bundle {self._bundle_file}: {exc}") from None
 
         now = self._clock()
         prior = self._read_state()
@@ -515,43 +513,44 @@ class GovernanceLoader:
 
         if signer_pk not in self._authority_keys:
             if signer_pk in self._previous_keys:
-                remaining = (self._previous_expires_at - now) // 86400 # type: ignore
+                remaining = (self._previous_expires_at - now) // 86400  # type: ignore
                 log.warning(
                     "governance v%d signed by a previous authority key; "
                     "re-sign with a current key before the overlap expires "
                     "(%d day(s) left)",
-                    gov.version, remaining)
+                    gov.version,
+                    remaining,
+                )
             elif prior is not None and signer_pk in prior.next_keys:
-                log.info(
-                    "governance v%d accepted under a signed-forward rotation",
-                    gov.version)
+                log.info("governance v%d accepted under a signed-forward rotation", gov.version)
             else:
                 raise ConfigError("bundle signer is not a trusted authority")
 
         if gov.version < self._min_version:
             raise ConfigError(
                 f"bundle v{gov.version} is below min_version v{self._min_version}; "
-                f"the wrong bundle may be mounted")
+                f"the wrong bundle may be mounted"
+            )
 
         self._enforce_monotonic(gov, next_pk)
         return gov
 
-    def _enforce_monotonic(self, gov: Governance,
-                           next_pk: bytes | None) -> None:
+    def _enforce_monotonic(self, gov: Governance, next_pk: bytes | None) -> None:
         prior = self._read_state()
         if prior is not None:
             if gov.version < prior.version:
                 raise ConfigError(
-                    f"rollback refused: bundle v{gov.version} < accepted "
-                    f"v{prior.version}")
+                    f"rollback refused: bundle v{gov.version} < accepted v{prior.version}"
+                )
             if gov.version == prior.version:
                 if not hmac.compare_digest(gov.digest, prior.digest):
                     raise ConfigError(
-                        f"equivocation: a different bundle also claims "
-                        f"v{gov.version}")
+                        f"equivocation: a different bundle also claims v{gov.version}"
+                    )
                 return
         self._write_state(
-            gov.version, gov.digest,
+            gov.version,
+            gov.digest,
             tuple(self._authority_keys),
             (next_pk,) if next_pk is not None else (),
         )
@@ -562,28 +561,28 @@ class GovernanceLoader:
         except FileNotFoundError:
             return None
         except OSError as exc:
-            raise ConfigError(
-                f"governance state unreadable ({self._state_file}): {exc}") from None
+            raise ConfigError(f"governance state unreadable ({self._state_file}): {exc}") from None
         try:
             data = json.loads(raw)
         except ValueError as exc:
-            raise ConfigError(
-                f"governance state corrupt: {self._state_file}: {exc}") from None
-        if (not isinstance(data, dict)
-                or type(data.get("version")) is not int
-                or not isinstance(data.get("digest"), str)):
+            raise ConfigError(f"governance state corrupt: {self._state_file}: {exc}") from None
+        if (
+            not isinstance(data, dict)
+            or type(data.get("version")) is not int
+            or not isinstance(data.get("digest"), str)
+        ):
             raise ConfigError(f"governance state corrupt: {self._state_file}")
         try:
-            auth = tuple(cc.b64d(k)
-                         for k in data.get("authority_keys", ()))
-            nxt = tuple(cc.b64d(k)
-                        for k in data.get("next_keys", ()))
+            auth = tuple(cc.b64d(k) for k in data.get("authority_keys", ()))
+            nxt = tuple(cc.b64d(k) for k in data.get("next_keys", ()))
         except cc.RejectError:
             raise ConfigError(f"governance state corrupt: {self._state_file}")
         return _State(data["version"], data["digest"], auth, nxt)
 
     def _write_state(
-        self, version: int, digest: str,
+        self,
+        version: int,
+        digest: str,
         authority_keys: tuple[bytes, ...],
         next_keys: tuple[bytes, ...],
     ) -> None:
@@ -617,10 +616,15 @@ def _fsync_dir(path: Path) -> None:
 
 
 class GovernanceRuntime(Generic[T]):
-    def __init__(self, loader: GovernanceLoader,
-                 build: Callable[[Governance], T], *,
-                 reload_interval: float,
-                 clock: Callable[[], int] = lambda: int(time.time())) -> None:
+    def __init__(
+        self,
+        loader: GovernanceLoader,
+        build: Callable[[Governance], T],
+        *,
+        reload_interval: float,
+        clock: Callable[[], int] = lambda: int(time.time()),
+    ) -> None:
+
         self._loader = loader
         self._build = build
         self._interval = reload_interval
@@ -636,8 +640,7 @@ class GovernanceRuntime(Generic[T]):
         """
         gov = self._loader.load()
         self._current = (gov, self._build(gov))
-        log.info("governance v%d loaded digest=%s",
-                 gov.version, gov.digest[:16])
+        log.info("governance v%d loaded digest=%s", gov.version, gov.digest[:16])
         return gov
 
     def current(self) -> tuple[Governance, T]:
@@ -657,8 +660,7 @@ class GovernanceRuntime(Generic[T]):
             gov = self._loader.load()
         except ConfigError as exc:
             held = self._current[0].version if self._current else None
-            log.error("governance reload rejected (keeping v%s): %s",
-                      held, exc)
+            log.error("governance reload rejected (keeping v%s): %s", held, exc)
             return False
         cur = self._current
         if cur is not None and gov.version == cur[0].version:
@@ -666,12 +668,10 @@ class GovernanceRuntime(Generic[T]):
         try:
             built = self._build(gov)
         except Exception:
-            log.exception("governance v%d failed to build; keeping previous",
-                          gov.version)
+            log.exception("governance v%d failed to build; keeping previous", gov.version)
             return False
-        self._current = (gov, built)      # single reference swap
-        log.info("governance v%d installed digest=%s",
-                 gov.version, gov.digest[:16])
+        self._current = (gov, built)  # single reference swap
+        log.info("governance v%d installed digest=%s", gov.version, gov.digest[:16])
         return True
 
     def start(self) -> None:
@@ -681,7 +681,7 @@ class GovernanceRuntime(Generic[T]):
         of a bundle after this returns.
         """
         if self._current is None:
-            self.load_initial()   # raises -> node refuses to start
+            self.load_initial()  # raises -> node refuses to start
         self._task = asyncio.get_running_loop().create_task(self._watch())
 
     async def stop(self) -> None:
@@ -705,20 +705,14 @@ class GovernanceRuntime(Generic[T]):
                 if now - self._last_expiry_warning >= EXPIRY_LOG_INTERVAL_SECONDS:
                     log.warning(
                         "governance v%d expires in %.1fh; ship a new bundle",
-                        cur[0].version, remaining / 3600)
+                        cur[0].version,
+                        remaining / 3600,
+                    )
                     self._last_expiry_warning = now
-
-
-
-
-
 
 
 @dataclass(frozen=True, slots=True)
 class TlsConfig:
-    cert_file: Path
-    key_file: Path
-    ca_file: Path
     trust_domains: frozenset[str]
 
 
@@ -782,8 +776,11 @@ class NodeConfig:
         try:
             return self.peers[name]
         except KeyError:
-            raise ConfigError(
-                f"{self.path}: peers.{name} is not configured") from None
+            raise ConfigError(f"{self.path}: peers.{name} is not configured") from None
+
+    @property
+    def spiffe_socket_path(self):
+        return self.spiffe_id
 
 
 def _pubkey(value: Any, where: str) -> bytes:
@@ -792,8 +789,7 @@ def _pubkey(value: Any, where: str) -> bytes:
     except cc.RejectError:
         raise ConfigError(f"{where}: invalid base64") from None
     if len(raw) != cc.PUBLIC_KEY_BYTES:
-        raise ConfigError(
-            f"{where}: expected a {cc.PUBLIC_KEY_BYTES}-byte Ed25519 public key")
+        raise ConfigError(f"{where}: expected a {cc.PUBLIC_KEY_BYTES}-byte Ed25519 public key")
     return raw
 
 
@@ -803,14 +799,13 @@ def _env(t: Mapping[str, Any], key: str, where: str) -> str | None:
     name = text(t[key], f"{where}.{key}", 128)
     value = os.environ.get(name)
     if not value:
-        raise ConfigError(
-            f"{where}.{key}: environment variable {name} is not set")
+        raise ConfigError(f"{where}.{key}: environment variable {name} is not set")
     return value
 
 
 def _host_port(t: Mapping[str, Any], where: str) -> tuple[str, int]:
-    return (text(t["host"], f"{where}.host", 253),
-            integer(t["port"], f"{where}.port", 1, 65535))
+    return (text(t["host"], f"{where}.host", 253), integer(t["port"], f"{where}.port", 1, 65535))
+
 
 def load_seed(source: str | bytes | Path) -> bytes:
     """Read an Ed25519 seed.
@@ -824,22 +819,17 @@ def load_seed(source: str | bytes | Path) -> bytes:
     """
     if isinstance(source, bytes):
         if len(source) != cc.PRIVATE_SEED_BYTES:
-            raise ConfigError(
-                f"seed: expected {cc.PRIVATE_SEED_BYTES} bytes, "
-                f"got {len(source)}")
+            raise ConfigError(f"seed: expected {cc.PRIVATE_SEED_BYTES} bytes, got {len(source)}")
         return source
 
     path = Path(source)
     if os.name != "nt" and path.stat().st_mode & 0o077:
-        raise ConfigError(
-            f"{path}: secret file must not be group/world accessible "
-            f"(chmod 600)")
+        raise ConfigError(f"{path}: secret file must not be group/world accessible (chmod 600)")
 
     try:
         raw = path.read_bytes()
     except OSError as exc:
-        raise ConfigError(
-            f"{path}: unreadable ({type(exc).__name__})") from None
+        raise ConfigError(f"{path}: unreadable ({type(exc).__name__})") from None
 
     # Raw 32-byte seed file
     if len(raw) == cc.PRIVATE_SEED_BYTES:
@@ -851,10 +841,11 @@ def load_seed(source: str | bytes | Path) -> bytes:
     except UnicodeDecodeError:
         raise ConfigError(
             f"{path}: not a raw {cc.PRIVATE_SEED_BYTES}-byte seed "
-            f"and not ASCII text ({len(raw)} bytes)") from None
+            f"and not ASCII text ({len(raw)} bytes)"
+        ) from None
 
     while s.startswith("base64:"):
-        s = s[len("base64:"):]
+        s = s[len("base64:") :]
 
     # hex?
     if len(s) == 64 and all(c in "0123456789abcdefABCDEF" for c in s):
@@ -876,9 +867,8 @@ def load_seed(source: str | bytes | Path) -> bytes:
         if len(seed) == cc.PRIVATE_SEED_BYTES:
             return seed
 
-    raise ConfigError(
-        f"{path}: cannot decode as raw {cc.PRIVATE_SEED_BYTES}B, "
-        f"b64, or hex")
+    raise ConfigError(f"{path}: cannot decode as raw {cc.PRIVATE_SEED_BYTES}B, b64, or hex")
+
 
 def load_node_config(path: str | Path) -> NodeConfig:
     path = Path(path).resolve()
@@ -891,81 +881,88 @@ def load_node_config(path: str | Path) -> NodeConfig:
         raise ConfigError(f"{path}: {exc}") from None
     base = path.parent
 
-    t = table(raw, "node", ("role", "spiffe_id", "tls", "governance"),
-              ("environment", "listen", "peers", "stores", "key", "issuer"))
+    t = table(
+        raw,
+        "node",
+        ("role", "spiffe_id", "tls", "governance"),
+        ("environment", "listen", "peers", "stores", "key", "issuer"),
+    )
     role = text(t["role"], "role")
     if role not in ROLES:
         raise ConfigError(f"role: expected one of {sorted(ROLES)}")
     environment = t.get("environment", "production")
     if environment not in ENVIRONMENTS:
-        raise ConfigError(
-            f"environment: expected one of {sorted(ENVIRONMENTS)}")
+        raise ConfigError(f"environment: expected one of {sorted(ENVIRONMENTS)}")
 
-    tt = table(t["tls"], "tls",
-               ("cert_file", "key_file", "ca_file", "trust_domains"))
+    tt = table(t["tls"], "tls", ("trust_domains",))
     domains = frozenset(texts(tt["trust_domains"], "tls.trust_domains", 16))
     if not domains or any("/" in d or ":" in d for d in domains):
-        raise ConfigError(
-            "tls.trust_domains: expected bare trust-domain names, e.g. ['aegis']")
+        raise ConfigError("tls.trust_domains: expected bare trust-domain names, e.g. ['aegis']")
+
     tls = TlsConfig(
-        cert_file=file_path(tt["cert_file"], "tls.cert_file", base),
-        key_file=file_path(tt["key_file"], "tls.key_file", base),
-        ca_file=file_path(tt["ca_file"], "tls.ca_file", base),
         trust_domains=domains,
     )
 
-    gt = table(t["governance"], "governance",
-               ("bundle_file", "state_file", "authority_keys"),
-               ("reload_interval_seconds", "min_version",
-                "previous_authority_keys", "previous_keys_expire_at"))
+    gt = table(
+        t["governance"],
+        "governance",
+        ("bundle_file", "state_file", "authority_keys"),
+        (
+            "reload_interval_seconds",
+            "min_version",
+            "previous_authority_keys",
+            "previous_keys_expire_at",
+        ),
+    )
     keys = tuple(
         _pubkey(k, f"governance.authority_keys[{i}]")
-        for i, k in enumerate(texts(
-            gt["authority_keys"], "governance.authority_keys", 8))
+        for i, k in enumerate(texts(gt["authority_keys"], "governance.authority_keys", 8))
     )
     if not keys:
         raise ConfigError("governance.authority_keys: at least one key required")
 
     prev_keys_raw = gt.get("previous_authority_keys")
-    prev_keys = (tuple(
-        _pubkey(k, f"governance.previous_authority_keys[{i}]")
-        for i, k in enumerate(texts(
-            prev_keys_raw, "governance.previous_authority_keys", 8))
-    ) if prev_keys_raw is not None else ())
+    prev_keys = (
+        tuple(
+            _pubkey(k, f"governance.previous_authority_keys[{i}]")
+            for i, k in enumerate(texts(prev_keys_raw, "governance.previous_authority_keys", 8))
+        )
+        if prev_keys_raw is not None
+        else ()
+    )
 
     prev_exp_raw = gt.get("previous_keys_expire_at")
-    prev_exp = (epoch(prev_exp_raw, "governance.previous_keys_expire_at")
-                if prev_exp_raw is not None else None)
+    prev_exp = (
+        epoch(prev_exp_raw, "governance.previous_keys_expire_at")
+        if prev_exp_raw is not None
+        else None
+    )
 
     if prev_keys and prev_exp is None:
         raise ConfigError(
             "governance.previous_authority_keys requires "
-            "governance.previous_keys_expire_at (a bounded overlap window)")
+            "governance.previous_keys_expire_at (a bounded overlap window)"
+        )
     if prev_exp is not None and not prev_keys:
         raise ConfigError(
-            "governance.previous_keys_expire_at has no "
-            "governance.previous_authority_keys to bound")
+            "governance.previous_keys_expire_at has no governance.previous_authority_keys to bound"
+        )
 
     governance = GovernanceConfig(
-        bundle_file=file_path(gt["bundle_file"],
-                              "governance.bundle_file", base),
-        state_file=file_path(gt["state_file"],
-                             "governance.state_file", base, must_exist=False),
+        bundle_file=file_path(gt["bundle_file"], "governance.bundle_file", base),
+        state_file=file_path(gt["state_file"], "governance.state_file", base, must_exist=False),
         authority_keys=keys,
         reload_interval=number(
-            gt.get("reload_interval_seconds", 30),
-            "governance.reload_interval_seconds", 1, 3600),
-        min_version=integer(
-            gt.get("min_version", 1),
-            "governance.min_version", lo=1),
+            gt.get("reload_interval_seconds", 30), "governance.reload_interval_seconds", 1, 3600
+        ),
+        min_version=integer(gt.get("min_version", 1), "governance.min_version", lo=1),
         previous_authority_keys=prev_keys,
         previous_keys_expire_at=prev_exp,
     )
 
     listen = None
     if "listen" in t:
-        listen = Listen(*_host_port(
-            table(t["listen"], "listen", ("host", "port")), "listen"))
+        listen = Listen(*_host_port(table(t["listen"], "listen", ("host", "port")), "listen"))
 
     peers: dict[str, Endpoint] = {}
     raw_peers = t.get("peers", {})
@@ -976,34 +973,33 @@ def load_node_config(path: str | Path) -> NodeConfig:
             raise ConfigError(f"peers.{name}: invalid peer name")
         pt = table(value, f"peers.{name}", ("host", "port", "spiffe_id"))
         host, port = _host_port(pt, f"peers.{name}")
-        peers[name] = Endpoint(
-            host, port, spiffe(pt["spiffe_id"], f"peers.{name}.spiffe_id"))
+        peers[name] = Endpoint(host, port, spiffe(pt["spiffe_id"], f"peers.{name}.spiffe_id"))
 
     stores = None
     if "stores" in t:
-        st = table(t["stores"], "stores", ("backend",),
-                   ("redis_url_env", "postgres_dsn_env", "schema", "prefix"))
+        st = table(
+            t["stores"],
+            "stores",
+            ("backend",),
+            ("redis_url_env", "postgres_dsn_env", "schema", "prefix"),
+        )
         backend = text(st["backend"], "stores.backend")
         if backend not in {"memory", "redis", "database"}:
-            raise ConfigError(
-                "stores.backend: expected 'memory', 'redis', or 'database'")
+            raise ConfigError("stores.backend: expected 'memory', 'redis', or 'database'")
         if backend == "memory" and environment != "development":
             raise ConfigError(
-                "stores.backend = 'memory' is only permitted with "
-                "environment = 'development'")
+                "stores.backend = 'memory' is only permitted with environment = 'development'"
+            )
         if backend == "redis" and "redis_url_env" not in st:
             raise ConfigError("stores: backend 'redis' requires redis_url_env")
         if backend == "database" and "postgres_dsn_env" not in st:
-            raise ConfigError(
-                "stores: backend 'database' requires postgres_dsn_env")
+            raise ConfigError("stores: backend 'database' requires postgres_dsn_env")
         stores = StoresConfig(
             backend=backend,
             redis_url=_env(st, "redis_url_env", "stores"),
             postgres_dsn=_env(st, "postgres_dsn_env", "stores"),
-            schema=text(st["schema"], "stores.schema", 63)
-            if "schema" in st else None,
-            prefix=text(st["prefix"], "stores.prefix", 128)
-            if "prefix" in st else None,
+            schema=text(st["schema"], "stores.schema", 63) if "schema" in st else None,
+            prefix=text(st["prefix"], "stores.prefix", 128) if "prefix" in st else None,
         )
 
     key_seed = None
@@ -1014,31 +1010,33 @@ def load_node_config(path: str | Path) -> NodeConfig:
     root_seed = None
     if "issuer" in t:
         it = table(t["issuer"], "issuer", ("root_seed_file",))
-        root_seed = file_path(it["root_seed_file"],
-                              "issuer.root_seed_file", base)
+        root_seed = file_path(it["root_seed_file"], "issuer.root_seed_file", base)
 
     sections, required_peers = _REQUIREMENTS[role]
     if missing := sections - set(t):
-        raise ConfigError(
-            f"role {role!r} requires sections {sorted(missing)}")
+        raise ConfigError(f"role {role!r} requires sections {sorted(missing)}")
     if missing := required_peers - set(peers):
-        raise ConfigError(
-            f"role {role!r} requires peers {sorted(missing)}")
+        raise ConfigError(f"role {role!r} requires peers {sorted(missing)}")
 
     return NodeConfig(
-        path=path, role=role,
+        path=path,
+        role=role,
         spiffe_id=spiffe(t["spiffe_id"], "spiffe_id"),
-        environment=environment, tls=tls, governance=governance,
-        listen=listen, peers=peers, stores=stores,
-        key_seed_file=key_seed, root_seed_file=root_seed,
+        environment=environment,
+        tls=tls,
+        governance=governance,
+        listen=listen,
+        peers=peers,
+        stores=stores,
+        key_seed_file=key_seed,
+        root_seed_file=root_seed,
     )
-
 
 
 def _canonical_key_b64(value: Any, where: str) -> str:
     s = text(value, where, 4096).strip()
     while s.startswith("base64:"):
-        s = s[len("base64:"):]
+        s = s[len("base64:") :]
     core = s.rstrip("=")
     padded = core + "=" * (-len(core) % 4)
     for decode in (base64.urlsafe_b64decode, base64.b64decode):
@@ -1047,23 +1045,21 @@ def _canonical_key_b64(value: Any, where: str) -> str:
         except Exception:
             continue
         if len(raw) != cc.PUBLIC_KEY_BYTES:
-            raise ConfigError(
-                f"{where}: expected {cc.PUBLIC_KEY_BYTES} bytes, "
-                f"got {len(raw)}")
+            raise ConfigError(f"{where}: expected {cc.PUBLIC_KEY_BYTES} bytes, got {len(raw)}")
         return cc.b64e(raw)
     raise ConfigError(f"{where}: invalid base64")
 
 
-
 def compile_document(source: Mapping[str, Any]) -> dict:
     # FIX: "enrollment" added to optional set
-    s = table(source, "governance",
-              ("version", "not_before", "expires_at",
-               "trust", "policy", "pricing"),
-              ("issuance", "enrollment"))
+    s = table(
+        source,
+        "governance",
+        ("version", "not_before", "expires_at", "trust", "policy", "pricing"),
+        ("issuance", "enrollment"),
+    )
     trust = table(s["trust"], "trust", ("roots",), ("enrollment",))
-    pol = table(s["policy"], "policy", ("max_depth", "edges"),
-                ("models", "peer_bound_tools"))
+    pol = table(s["policy"], "policy", ("max_depth", "edges"), ("models", "peer_bound_tools"))
     pricing = table(s["pricing"], "pricing", ("rules",), ("default",))
 
     doc = {
@@ -1077,37 +1073,40 @@ def compile_document(source: Mapping[str, Any]) -> dict:
                 # FIX: canonicalize each key (accepts legacy padded form)
                 "keys": sorted(
                     _canonical_key_b64(k, f"trust.roots[{i}].keys[{j}]")
-                    for j, k in enumerate(
-                        texts(r["keys"], f"trust.roots[{i}].keys"))
+                    for j, k in enumerate(texts(r["keys"], f"trust.roots[{i}].keys"))
                 ),
             }
-            for i, r in enumerate(tables(
-                trust["roots"], "trust.roots",
-                ("issuer", "keys"), max_items=64))
+            for i, r in enumerate(
+                tables(trust["roots"], "trust.roots", ("issuer", "keys"), max_items=64)
+            )
         ],
         "policy": {
             "max_depth": pol["max_depth"],
             "models": sorted(
                 _model(v, f"policy.models[{i}]")
-                for i, v in enumerate(texts(
-                    pol.get("models", [cc.Model.KEY_BOUND]),
-                    "policy.models"))
+                for i, v in enumerate(
+                    texts(pol.get("models", [cc.Model.KEY_BOUND]), "policy.models")
+                )
             ),
             "peer_bound_tools": sorted(
-                texts(pol.get("peer_bound_tools", []),
-                      "policy.peer_bound_tools")),
+                texts(pol.get("peer_bound_tools", []), "policy.peer_bound_tools")
+            ),
             "edges": [
                 {
-                    "parent": e["parent"], "child": e["child"],
+                    "parent": e["parent"],
+                    "child": e["child"],
                     "max_ttl": e["max_ttl"],
                     "max_children": e.get("max_children", 32),
-                    "ceiling": _scope(e["ceiling"],
-                                      f"policy.edges[{i}].ceiling").to_body(),
+                    "ceiling": _scope(e["ceiling"], f"policy.edges[{i}].ceiling").to_body(),
                 }
-                for i, e in enumerate(tables(
-                    pol["edges"], "policy.edges",
-                    ("parent", "child", "max_ttl", "ceiling"),
-                    ("max_children",)))
+                for i, e in enumerate(
+                    tables(
+                        pol["edges"],
+                        "policy.edges",
+                        ("parent", "child", "max_ttl", "ceiling"),
+                        ("max_children",),
+                    )
+                )
             ],
         },
         "issuance": [
@@ -1115,42 +1114,46 @@ def compile_document(source: Mapping[str, Any]) -> dict:
                 "holder": r["holder"],
                 "ttl": r["ttl"],
                 "max_depth": r.get("max_depth", 1),
-                "model": _model(r.get("model", cc.Model.KEY_BOUND),
-                                f"issuance[{i}].model"),
-                "scope": _scope(r["scope"],
-                                f"issuance[{i}].scope").to_body(),
+                "model": _model(r.get("model", cc.Model.KEY_BOUND), f"issuance[{i}].model"),
+                "scope": _scope(r["scope"], f"issuance[{i}].scope").to_body(),
             }
-            for i, r in enumerate(tables(
-                s.get("issuance", []), "issuance",
-                ("holder", "ttl", "scope"), ("max_depth", "model")))
+            for i, r in enumerate(
+                tables(
+                    s.get("issuance", []),
+                    "issuance",
+                    ("holder", "ttl", "scope"),
+                    ("max_depth", "model"),
+                )
+            )
         ],
         "pricing": {
             "rules": [
                 _compile_cost(r, f"pricing.rules[{i}]", with_tool=True)
                 for i, r in enumerate(
-                    pricing["rules"] if isinstance(pricing["rules"], list)
-                    else _bad_list("pricing.rules"))
+                    pricing["rules"]
+                    if isinstance(pricing["rules"], list)
+                    else _bad_list("pricing.rules")
+                )
             ],
-            "default": (_compile_cost(pricing["default"], "pricing.default",
-                                      with_tool=False)
-                        if "default" in pricing else None),
+            "default": (
+                _compile_cost(pricing["default"], "pricing.default", with_tool=False)
+                if "default" in pricing
+                else None
+            ),
         },
     }
 
     # FIX: canonical enrollment authority key + optional constraint table
     if "enrollment" in trust:
-        doc["enrollment_authority"] = _canonical_key_b64(
-            trust["enrollment"], "trust.enrollment")
+        doc["enrollment_authority"] = _canonical_key_b64(trust["enrollment"], "trust.enrollment")
 
     if s.get("enrollment"):
-        t = table(s["enrollment"], "enrollment",
-                  ("may_enroll", "ttl", "model", "ceiling"))
+        t = table(s["enrollment"], "enrollment", ("may_enroll", "ttl", "model", "ceiling"))
         doc["enrollment"] = {
             "may_enroll": t["may_enroll"],
-            "ttl":        t["ttl"],
-            "model":      _model(t["model"], "enrollment.model"),
-            "ceiling":    _scope(t["ceiling"],
-                                 "enrollment.ceiling").to_body(),
+            "ttl": t["ttl"],
+            "model": _model(t["model"], "enrollment.model"),
+            "ceiling": _scope(t["ceiling"], "enrollment.ceiling").to_body(),
         }
 
     body = _encode(doc)
@@ -1160,11 +1163,14 @@ def compile_document(source: Mapping[str, Any]) -> dict:
 
 # ── parse (canonical document → runtime objects) ────────────────────────
 
+
 def parse_document(doc: Mapping[str, Any], digest: str) -> Governance:
-    d = table(doc, "bundle",
-              ("format", "version", "nbf", "exp", "roots",
-               "policy", "issuance", "pricing"),
-              ("enrollment_authority", "enrollment"))
+    d = table(
+        doc,
+        "bundle",
+        ("format", "version", "nbf", "exp", "roots", "policy", "issuance", "pricing"),
+        ("enrollment_authority", "enrollment"),
+    )
 
     if d["format"] != BUNDLE_FORMAT:
         raise ConfigError(f"unsupported bundle format {d['format']!r}")
@@ -1172,24 +1178,18 @@ def parse_document(doc: Mapping[str, Any], digest: str) -> Governance:
     nbf, exp = integer(d["nbf"], "nbf"), integer(d["exp"], "exp")
 
     if not nbf < exp <= nbf + MAX_BUNDLE_LIFETIME:
-        raise ConfigError(
-            "validity window must be positive and at most 90 days")
+        raise ConfigError("validity window must be positive and at most 90 days")
 
     # trust roots
     issuers: dict[str, list[bytes]] = {}
-    for i, r in enumerate(tables(
-            d["roots"], "roots", ("issuer", "keys"), max_items=64)):
+    for i, r in enumerate(tables(d["roots"], "roots", ("issuer", "keys"), max_items=64)):
         issuer = spiffe(r["issuer"], f"roots[{i}].issuer")
         if issuer in issuers:
             raise ConfigError(f"roots[{i}]: duplicate issuer {issuer}")
         try:
-            issuers[issuer] = [
-                cc.b64d(k)
-                for k in texts(r["keys"], f"roots[{i}].keys", 8)
-            ]
+            issuers[issuer] = [cc.b64d(k) for k in texts(r["keys"], f"roots[{i}].keys", 8)]
         except cc.RejectError:
-            raise ConfigError(
-                f"roots[{i}].keys: invalid base64") from None
+            raise ConfigError(f"roots[{i}].keys: invalid base64") from None
 
     # enrollment authority (single key)
     raw_ea = d.get("enrollment_authority")
@@ -1197,15 +1197,11 @@ def parse_document(doc: Mapping[str, Any], digest: str) -> Governance:
         enrollment_key = b""
     else:
         try:
-            enrollment_key = cc.b64d(
-                text(raw_ea, "enrollment_authority"))
+            enrollment_key = cc.b64d(text(raw_ea, "enrollment_authority"))
         except cc.RejectError:
-            raise ConfigError(
-                "enrollment_authority: invalid base64") from None
+            raise ConfigError("enrollment_authority: invalid base64") from None
         if len(enrollment_key) != cc.PUBLIC_KEY_BYTES:
-            raise ConfigError(
-                f"enrollment_authority: expected "
-                f"{cc.PUBLIC_KEY_BYTES} bytes")
+            raise ConfigError(f"enrollment_authority: expected {cc.PUBLIC_KEY_BYTES} bytes")
 
     try:
         roots = cc.TrustedRoots(enrollment_key, issuers)
@@ -1213,63 +1209,64 @@ def parse_document(doc: Mapping[str, Any], digest: str) -> Governance:
         raise ConfigError(f"roots: {exc}") from None
 
     # delegation policy
-    p = table(d["policy"], "policy",
-              ("max_depth", "models", "peer_bound_tools", "edges"))
+    p = table(d["policy"], "policy", ("max_depth", "models", "peer_bound_tools", "edges"))
     raw_edges = tables(
-        p["edges"], "policy.edges",
+        p["edges"],
+        "policy.edges",
         ("parent", "child", "max_ttl", "max_children", "ceiling"),
-        max_items=MAX_EDGES)
+        max_items=MAX_EDGES,
+    )
     edges: list[EdgeRule] = []
     for i, e in enumerate(raw_edges):
         w = f"policy.edges[{i}]"
         try:
-            edges.append(EdgeRule(
-                parent=spiffe(e["parent"], f"{w}.parent", pattern=True),
-                child=spiffe(e["child"], f"{w}.child", pattern=True),
-                ceiling=_scope(e["ceiling"], f"{w}.ceiling"),
-                max_ttl=integer(e["max_ttl"], f"{w}.max_ttl",
-                                lo=1, hi=86400),
-                max_children=integer(e["max_children"], f"{w}.max_children",
-                                     lo=1, hi=4096),
-            ))
+            edges.append(
+                EdgeRule(
+                    parent=spiffe(e["parent"], f"{w}.parent", pattern=True),
+                    child=spiffe(e["child"], f"{w}.child", pattern=True),
+                    ceiling=_scope(e["ceiling"], f"{w}.ceiling"),
+                    max_ttl=integer(e["max_ttl"], f"{w}.max_ttl", lo=1, hi=86400),
+                    max_children=integer(e["max_children"], f"{w}.max_children", lo=1, hi=4096),
+                )
+            )
         except ValueError as exc:
             raise ConfigError(f"{w}: {exc}") from None
 
     if _has_cycle(edges):
         raise ConfigError(
-            "policy.edges contains a cycle; delegation chains would be "
-            "ambiguous (e.g. A → B → A).")
+            "policy.edges contains a cycle; delegation chains would be ambiguous (e.g. A → B → A)."
+        )
 
     try:
         policy = Policy(
             version=version,
             root_issuers=frozenset(issuers),
             edges=tuple(edges),
-            max_depth=integer(p["max_depth"], "policy.max_depth",
-                              hi=cc.MAX_BLOCKS - 1),
+            max_depth=integer(p["max_depth"], "policy.max_depth", hi=cc.MAX_BLOCKS - 1),
             allowed_models=frozenset(
                 _model(v, f"policy.models[{i}]")
-                for i, v in enumerate(texts(p["models"], "policy.models"))),
-            peer_bound_tools=frozenset(
-                texts(p["peer_bound_tools"], "policy.peer_bound_tools")),
+                for i, v in enumerate(texts(p["models"], "policy.models"))
+            ),
+            peer_bound_tools=frozenset(texts(p["peer_bound_tools"], "policy.peer_bound_tools")),
         )
     except (ValueError, TypeError) as exc:
         raise ConfigError(f"policy: {exc}") from None
 
     # issuance
     rules: list[IssuanceRule] = []
-    for i, r in enumerate(tables(
-            d["issuance"], "issuance",
-            ("holder", "ttl", "max_depth", "model", "scope"))):
+    for i, r in enumerate(
+        tables(d["issuance"], "issuance", ("holder", "ttl", "max_depth", "model", "scope"))
+    ):
         w = f"issuance[{i}]"
-        rules.append(IssuanceRule(
-            holder=spiffe(r["holder"], f"{w}.holder", pattern=True),
-            scope=_scope(r["scope"], f"{w}.scope"),
-            ttl=integer(r["ttl"], f"{w}.ttl", lo=1, hi=86400),
-            max_depth=integer(r["max_depth"], f"{w}.max_depth",
-                              hi=cc.MAX_BLOCKS - 1),
-            model=_model(r["model"], f"{w}.model"),
-        ))
+        rules.append(
+            IssuanceRule(
+                holder=spiffe(r["holder"], f"{w}.holder", pattern=True),
+                scope=_scope(r["scope"], f"{w}.scope"),
+                ttl=integer(r["ttl"], f"{w}.ttl", lo=1, hi=86400),
+                max_depth=integer(r["max_depth"], f"{w}.max_depth", hi=cc.MAX_BLOCKS - 1),
+                model=_model(r["model"], f"{w}.model"),
+            )
+        )
     issuance = IssuanceRules(tuple(rules))
 
     # enrollment (optional)
@@ -1279,13 +1276,11 @@ def parse_document(doc: Mapping[str, Any], digest: str) -> Governance:
     else:
         if not enrollment_key:
             raise ConfigError(
-                "enrollment: constraints present but no enrollment_authority "
-                "key is pinned")
-        t = table(raw_enroll, "enrollment",
-                  ("may_enroll", "ttl", "model", "ceiling"))
+                "enrollment: constraints present but no enrollment_authority key is pinned"
+            )
+        t = table(raw_enroll, "enrollment", ("may_enroll", "ttl", "model", "ceiling"))
         enrollment = EnrollmentRule(
-            may_enroll=spiffe(t["may_enroll"], "enrollment.may_enroll",
-                              pattern=True),
+            may_enroll=spiffe(t["may_enroll"], "enrollment.may_enroll", pattern=True),
             ceiling=_scope(t["ceiling"], "enrollment.ceiling"),
             ttl=integer(t["ttl"], "enrollment.ttl", lo=1, hi=86400),
             model=_model(t["model"], "enrollment.model"),
@@ -1295,39 +1290,37 @@ def parse_document(doc: Mapping[str, Any], digest: str) -> Governance:
     pr = table(d["pricing"], "pricing", ("rules", "default"))
     cost_rules: list[CostRule] = []
     for i, r in enumerate(
-            pr["rules"] if isinstance(pr["rules"], list)
-            else _bad_list("pricing.rules")):
+        pr["rules"] if isinstance(pr["rules"], list) else _bad_list("pricing.rules")
+    ):
         tool, tc = _parse_cost(r, f"pricing.rules[{i}]", with_tool=True)
-        cost_rules.append(CostRule(tool, tc)) # type: ignore
-    default = (None if pr["default"] is None
-               else _parse_cost(pr["default"], "pricing.default",
-                                with_tool=False)[1])
+        cost_rules.append(CostRule(tool, tc))  # type: ignore
+    default = (
+        None
+        if pr["default"] is None
+        else _parse_cost(pr["default"], "pricing.default", with_tool=False)[1]
+    )
     try:
         cost = StaticCostModel(cost_rules, default=default)
     except (ValueError, TypeError) as exc:
         raise ConfigError(f"pricing: {exc}") from None
 
     _cross_check(policy, issuance, enrollment, cost)
-    return Governance(version, nbf, exp, digest, roots, policy,
-                      cost, issuance, enrollment)
+    return Governance(version, nbf, exp, digest, roots, policy, cost, issuance, enrollment)
 
 
-
-
-def _cross_check(policy: Policy, issuance: IssuanceRules,
-                 enrollment: EnrollmentRule | None,
-                 cost: StaticCostModel) -> None:
-
+def _cross_check(
+    policy: Policy,
+    issuance: IssuanceRules,
+    enrollment: EnrollmentRule | None,
+    cost: StaticCostModel,
+) -> None:
     """Reject documents that would be internally inconsistent at runtime."""
 
     if policy.peer_bound_tools and cc.Model.PEER_BOUND not in policy.allowed_models:
-        raise ConfigError(
-            "policy: peer_bound_tools requires the 'peer_bound' model")
+        raise ConfigError("policy: peer_bound_tools requires the 'peer_bound' model")
 
-    scopes = [(f"policy.edges[{i}].ceiling", e.ceiling)
-              for i, e in enumerate(policy.edges)]
-    scopes += [(f"issuance[{i}].scope", r.scope)
-               for i, r in enumerate(issuance.rules)]
+    scopes = [(f"policy.edges[{i}].ceiling", e.ceiling) for i, e in enumerate(policy.edges)]
+    scopes += [(f"issuance[{i}].scope", r.scope) for i, r in enumerate(issuance.rules)]
     if enrollment is not None:
         scopes.append(("enrollment.ceiling", enrollment.ceiling))
 
@@ -1335,22 +1328,19 @@ def _cross_check(policy: Policy, issuance: IssuanceRules,
         if cc.ANY in scope.tools:
             if not cost.covers_any():
                 raise ConfigError(
-                    f"{where}: scope permits any tool ('*') but pricing "
-                    f"has no `default` rule")
+                    f"{where}: scope permits any tool ('*') but pricing has no `default` rule"
+                )
         else:
             for tool in scope.tools:
                 if not cost.covers(tool):
-                    raise ConfigError(
-                        f"{where}: tool {tool!r} has no pricing rule")
+                    raise ConfigError(f"{where}: tool {tool!r} has no pricing rule")
 
     for i, rule in enumerate(issuance.rules):
         w = f"issuance[{i}]"
         if rule.model not in policy.allowed_models:
-            raise ConfigError(
-                f"{w}: model {rule.model!r} is not allowed by policy")
+            raise ConfigError(f"{w}: model {rule.model!r} is not allowed by policy")
         if rule.max_depth > policy.max_depth:
-            raise ConfigError(
-                f"{w}: max_depth exceeds policy.max_depth")
+            raise ConfigError(f"{w}: max_depth exceeds policy.max_depth")
         if rule.holder.endswith("/*"):
             continue
         if not any(
@@ -1360,30 +1350,24 @@ def _cross_check(policy: Policy, issuance: IssuanceRules,
             for root in policy.root_issuers
         ):
             raise ConfigError(
-                f"{w}: no root edge to {rule.holder} whose ceiling and "
-                f"max_ttl cover this rule")
+                f"{w}: no root edge to {rule.holder} whose ceiling and max_ttl cover this rule"
+            )
 
     if enrollment is not None:
         if enrollment.model not in policy.allowed_models:
-            raise ConfigError(
-                f"enrollment: model {enrollment.model!r} is not allowed "
-                f"by policy")
-
-
-
+            raise ConfigError(f"enrollment: model {enrollment.model!r} is not allowed by policy")
 
 
 def _require_32(raw: bytes) -> bytes:
     if len(raw) != KEY_BYTES:
-        raise ValueError(
-            f"ed25519 public key must be {KEY_BYTES} bytes, got {len(raw)}")
+        raise ValueError(f"ed25519 public key must be {KEY_BYTES} bytes, got {len(raw)}")
     return raw
 
 
 def _decode_inline(s: str, *, where: str) -> bytes:
     # FIX: strip any number of "base64:" prefixes, then try both alphabets
     while s.startswith("base64:"):
-        s = s[len("base64:"):]
+        s = s[len("base64:") :]
 
     if len(s) == 64 and all(c in "0123456789abcdefABCDEF" for c in s):
         try:
@@ -1401,7 +1385,8 @@ def _decode_inline(s: str, *, where: str) -> bytes:
 
     raise ValueError(
         f"{where}: cannot decode as b64 (urlsafe or standard) or hex "
-        f"({len(s)} chars after stripping tags)")
+        f"({len(s)} chars after stripping tags)"
+    )
 
 
 def load_raw(source: str | bytes | Path) -> bytes:
@@ -1409,12 +1394,7 @@ def load_raw(source: str | bytes | Path) -> bytes:
         return _require_32(source)
 
     s = str(source)
-    looks_like_path = (
-        isinstance(source, Path)
-        or s.endswith(_PATH_HINTS)
-        or "/" in s
-        or "\\" in s
-    )
+    looks_like_path = isinstance(source, Path) or s.endswith(_PATH_HINTS) or "/" in s or "\\" in s
 
     if looks_like_path:
         p = Path(source)
@@ -1429,8 +1409,8 @@ def load_raw(source: str | bytes | Path) -> bytes:
             t = raw.decode("ascii").strip()
         except UnicodeDecodeError:
             raise ValueError(
-                f"{p}: not a raw {KEY_BYTES}-byte key "
-                f"(file is {len(raw)} bytes, not ASCII)") from None
+                f"{p}: not a raw {KEY_BYTES}-byte key (file is {len(raw)} bytes, not ASCII)"
+            ) from None
         return _decode_inline(t, where=str(p))
 
     return _decode_inline(s.strip(), where="<inline>")
@@ -1440,11 +1420,8 @@ def _validated_keys(keys: Iterable[bytes], where: str) -> list[bytes]:
     out: list[bytes] = []
     for i, k in enumerate(keys):
         raw = bytes(k) if isinstance(k, (bytes, bytearray)) else k
-        if (not isinstance(raw, bytes)
-                or len(raw) != cc.PUBLIC_KEY_BYTES):
-            raise ConfigError(
-                f"{where}[{i}]: expected "
-                f"{cc.PUBLIC_KEY_BYTES} bytes")
+        if not isinstance(raw, bytes) or len(raw) != cc.PUBLIC_KEY_BYTES:
+            raise ConfigError(f"{where}[{i}]: expected {cc.PUBLIC_KEY_BYTES} bytes")
         out.append(raw)
     if not out:
         raise ConfigError(f"{where}: at least one key required")
@@ -1457,12 +1434,14 @@ def sign_bundle(doc: Mapping[str, Any], key: cc.CapChainKey) -> bytes:
     if len(body) > MAX_BUNDLE_BYTES:
         raise ConfigError("bundle body too large")
     parse_document(cc.decode(body), _digest(body))
-    return _encode_envelope({
-        "format": BUNDLE_FORMAT,
-        "key": cc.b64e(key.public_key),
-        "sig": cc.b64e(key.sign(CTX_GOVERNANCE, body)),
-        "body": cc.b64e(body),
-    })
+    return _encode_envelope(
+        {
+            "format": BUNDLE_FORMAT,
+            "key": cc.b64e(key.public_key),
+            "sig": cc.b64e(key.sign(CTX_GOVERNANCE, body)),
+            "body": cc.b64e(body),
+        }
+    )
 
 
 def sign_bundle_with_rotation(
@@ -1475,25 +1454,27 @@ def sign_bundle_with_rotation(
     The envelope carries ``key_next`` and ``sig_next``. Nodes that accept
     this bundle learn the next authority key from the bundle itself, so
     the current authority explicitly approves its own successor.
-    """   
+    """
     body = _encode(doc)
     if len(body) > MAX_BUNDLE_BYTES:
         raise ConfigError("bundle body too large")
     parse_document(cc.decode(body), _digest(body))
-    return _encode_envelope({
-        "format": BUNDLE_FORMAT,
-        "key": cc.b64e(current_key.public_key),
-        "sig": cc.b64e(current_key.sign(CTX_GOVERNANCE, body)),
-        "key_next": cc.b64e(next_key.public_key),
-        "sig_next": cc.b64e(next_key.sign(CTX_GOVERNANCE, body)),
-        "body": cc.b64e(body),
-    })
+    return _encode_envelope(
+        {
+            "format": BUNDLE_FORMAT,
+            "key": cc.b64e(current_key.public_key),
+            "sig": cc.b64e(current_key.sign(CTX_GOVERNANCE, body)),
+            "key_next": cc.b64e(next_key.public_key),
+            "sig_next": cc.b64e(next_key.sign(CTX_GOVERNANCE, body)),
+            "body": cc.b64e(body),
+        }
+    )
 
 
 def _open_bundle_full(
-    raw: bytes, authority_keys: Iterable[bytes],
+    raw: bytes,
+    authority_keys: Iterable[bytes],
 ) -> tuple[Governance, bytes | None, bytes | None]:
-    
     """Verify and parse. Return (governance, signer_public_key, next_public_key).
 
     Does NOT check liveness or rollback; GovernanceLoader does both.
@@ -1510,11 +1491,9 @@ def _open_bundle_full(
     allowed = {"format", "key", "sig", "body", "key_next", "sig_next"}
     if not isinstance(envelope, dict) or set(envelope) - allowed:
         raise ConfigError("bundle envelope has unknown fields")
-    table(envelope, "bundle envelope", ("format", "key", "sig", "body"),
-          ("key_next", "sig_next"))
+    table(envelope, "bundle envelope", ("format", "key", "sig", "body"), ("key_next", "sig_next"))
     if envelope["format"] != BUNDLE_FORMAT:
-        raise ConfigError(
-            f"unsupported bundle format {envelope['format']!r}")
+        raise ConfigError(f"unsupported bundle format {envelope['format']!r}")
 
     has_next = "key_next" in envelope or "sig_next" in envelope
     if has_next and not ("key_next" in envelope and "sig_next" in envelope):
@@ -1524,43 +1503,41 @@ def _open_bundle_full(
         public_key = cc.b64d(envelope["key"])
         signature = cc.b64d(envelope["sig"])
         body = cc.b64d(envelope["body"])
-        next_pk = (cc.b64d(envelope["key_next"])
-                   if has_next else None)
-        next_sig = (cc.b64d(envelope["sig_next"])
-                    if has_next else None)
+        next_pk = cc.b64d(envelope["key_next"]) if has_next else None
+        next_sig = cc.b64d(envelope["sig_next"]) if has_next else None
     except cc.RejectError:
         raise ConfigError("bundle envelope has invalid base64") from None
     if len(body) > MAX_BUNDLE_BYTES:
         raise ConfigError("bundle body too large")
     if not any(hmac.compare_digest(public_key, k) for k in keys):
-        raise ConfigError(
-            "bundle is signed by a key that is not a pinned governance "
-            "authority")
+        raise ConfigError("bundle is signed by a key that is not a pinned governance authority")
 
     try:
-        cc.verify_signature(public_key, signature, CTX_GOVERNANCE, body,
-                            cc.Code.POLICY_DENIED, "governance bundle")
+        cc.verify_signature(
+            public_key, signature, CTX_GOVERNANCE, body, cc.Code.POLICY_DENIED, "governance bundle"
+        )
     except cc.RejectError:
         raise ConfigError("bundle signature is invalid") from None
 
     if has_next:
-        if (not isinstance(next_pk, bytes)
-                or len(next_pk) != cc.PUBLIC_KEY_BYTES):
+        if not isinstance(next_pk, bytes) or len(next_pk) != cc.PUBLIC_KEY_BYTES:
             raise ConfigError("rotation: next key has wrong length")
         try:
-            cc.verify_signature(next_pk, next_sig, CTX_GOVERNANCE, body, # type: ignore
-                                cc.Code.POLICY_DENIED,
-                                "governance bundle (next)")
+            cc.verify_signature(
+                next_pk,
+                next_sig,
+                CTX_GOVERNANCE,
+                body,  # type: ignore
+                cc.Code.POLICY_DENIED,
+                "governance bundle (next)",
+            )
         except cc.RejectError:
-            raise ConfigError(
-                "bundle next-key signature is invalid") from None
+            raise ConfigError("bundle next-key signature is invalid") from None
 
     try:
         doc = cc.decode(body)
     except cc.RejectError as exc:
-        raise ConfigError(
-            f"bundle body is not canonical: "
-            f"{exc.detail or exc.code}") from None
+        raise ConfigError(f"bundle body is not canonical: {exc.detail or exc.code}") from None
     return parse_document(doc, _digest(body)), public_key, next_pk
 
 
@@ -1571,7 +1548,8 @@ def open_bundle(raw: bytes, authority_keys: Iterable[bytes]) -> Governance:
 
 
 def open_bundle_with_signer(
-    raw: bytes, authority_keys: Iterable[bytes],
+    raw: bytes,
+    authority_keys: Iterable[bytes],
 ) -> tuple[Governance, bytes | None, bytes | None]:
     """Verify and parse. Return (governance, signer_pk, next_pk).
 
@@ -1582,9 +1560,6 @@ def open_bundle_with_signer(
     return _open_bundle_full(raw, authority_keys)
 
 
-
-
 def thumbprint(raw: bytes) -> str:
     _require_32(raw)
     return hashlib.sha256(raw).hexdigest()
-

@@ -69,6 +69,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 # Exceptions
 # ══════════════════════════════════════════════════════════════════════════
 
+
 class ClockError(Exception):
     """Base for all clock-related failures."""
 
@@ -97,6 +98,7 @@ class ClockMonotonicity(ClockError):
 # ══════════════════════════════════════════════════════════════════════════
 # Clock interface
 # ══════════════════════════════════════════════════════════════════════════
+
 
 class Clock(ABC):
     """
@@ -180,6 +182,7 @@ class Clock(ABC):
 # Implementations
 # ══════════════════════════════════════════════════════════════════════════
 
+
 class SystemClock(Clock):
     """
     Default clock. Reads time.time() and time.monotonic().
@@ -230,9 +233,7 @@ class FixedClock(Clock):
         mono_ms: int = 0,
         skew_ms: int = 0,
     ) -> None:
-        for name, value in (("wall_ms", wall_ms),
-                            ("mono_ms", mono_ms),
-                            ("skew_ms", skew_ms)):
+        for name, value in (("wall_ms", wall_ms), ("mono_ms", mono_ms), ("skew_ms", skew_ms)):
             if isinstance(value, bool) or not isinstance(value, int):
                 raise ValueError(f"{name} must be an int")
         self._wall = wall_ms
@@ -290,9 +291,7 @@ class MonotonicGuard(Clock):
         now = self._inner.mono_ms()
         with self._lock:
             if now < self._last_mono:
-                raise ClockMonotonicity(
-                    f"mono went backward: {self._last_mono} -> {now}"
-                )
+                raise ClockMonotonicity(f"mono went backward: {self._last_mono} -> {now}")
             self._last_mono = now
         return now
 
@@ -334,8 +333,11 @@ MAX_BEACON_BYTES = 4096
 
 def _canonical_encode(obj: dict) -> bytes:
     return json.dumps(
-        obj, sort_keys=True, separators=(",", ":"),
-        ensure_ascii=False, allow_nan=False,
+        obj,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
     ).encode("utf-8")
 
 
@@ -382,11 +384,11 @@ class TimeBeacon:
       nonce and source are non-empty strings
     """
 
-    t_ms:   int
+    t_ms: int
     iat_ms: int
     exp_ms: int
     source: str
-    nonce:  str
+    nonce: str
 
     @classmethod
     def sign(
@@ -413,10 +415,15 @@ class TimeBeacon:
         if not (iat_ms <= t_ms <= exp_ms):
             raise ValueError("beacon timestamps must be ordered iat <= t <= exp")
 
-        body = _canonical_encode({
-            "t": t_ms, "iat": iat_ms, "exp": exp_ms,
-            "source": source, "nonce": nonce,
-        })
+        body = _canonical_encode(
+            {
+                "t": t_ms,
+                "iat": iat_ms,
+                "exp": exp_ms,
+                "source": source,
+                "nonce": nonce,
+            }
+        )
         sig = private_key.sign(BEACON_CTX + body)
         return _canonical_encode({"body": _b64e(body), "sig": _b64e(sig)})
 
@@ -467,8 +474,7 @@ class TimeBeacon:
         if not (iat_ms <= t_ms <= exp_ms):
             raise ClockBeaconInvalid("beacon timestamps not ordered")
 
-        return cls(t_ms=t_ms, iat_ms=iat_ms, exp_ms=exp_ms,
-                   source=source, nonce=nonce)
+        return cls(t_ms=t_ms, iat_ms=iat_ms, exp_ms=exp_ms, source=source, nonce=nonce)
 
 
 class BeaconClock(Clock):
@@ -493,8 +499,13 @@ class BeaconClock(Clock):
     """
 
     __slots__ = (
-        "_verifier", "_skew_ms", "_max_drift_ms",
-        "_anchor", "_anchor_mono_ms", "_lock", "_mono",
+        "_verifier",
+        "_skew_ms",
+        "_max_drift_ms",
+        "_anchor",
+        "_anchor_mono_ms",
+        "_lock",
+        "_mono",
     )
 
     def __init__(
@@ -543,8 +554,7 @@ class BeaconClock(Clock):
                 raise ClockMonotonicity("monotonic clock went backward")
             if elapsed > self._max_drift_ms:
                 raise ClockBeaconInvalid(
-                    f"beacon stale: {elapsed}ms since anchor > "
-                    f"{self._max_drift_ms}ms"
+                    f"beacon stale: {elapsed}ms since anchor > {self._max_drift_ms}ms"
                 )
             wall = anchor.t_ms + elapsed
             if wall > anchor.exp_ms + self._skew_ms:
@@ -578,9 +588,7 @@ class BeaconClock(Clock):
         with self._lock:
             prev = self._anchor
             if prev is not None and beacon.t_ms < prev.t_ms:
-                raise ClockBeaconInvalid(
-                    f"beacon rollback: {beacon.t_ms} < {prev.t_ms}"
-                )
+                raise ClockBeaconInvalid(f"beacon rollback: {beacon.t_ms} < {prev.t_ms}")
             self._anchor = beacon
             self._anchor_mono_ms = anchor_mono
 
@@ -595,6 +603,7 @@ class BeaconClock(Clock):
 # TokenIssuer's enrollment_max_skew check while raising a clock-layer
 # exception rather than a capchain Reject.
 # ══════════════════════════════════════════════════════════════════════════
+
 
 def within_skew(a_ms: int, b_ms: int, tolerance_ms: int) -> bool:
     """
@@ -634,9 +643,7 @@ def require_within_skew(
         raise ValueError("tolerance_ms must be >= 0")
     delta = abs(int(a_ms) - int(b_ms))
     if delta > tolerance_ms:
-        raise ClockSkew(
-            f"{what}: skew {delta}ms exceeds tolerance {tolerance_ms}ms"
-        )
+        raise ClockSkew(f"{what}: skew {delta}ms exceeds tolerance {tolerance_ms}ms")
 
 
 def is_fresh(
@@ -691,10 +698,7 @@ def require_fresh(
         future_skew_ms=future_skew_ms,
     ):
         age = int(now_ms) - int(observed_ms)
-        raise ClockSkew(
-            f"{what}: age {age}ms outside window "
-            f"[-{future_skew_ms}, {window_ms}]ms"
-        )
+        raise ClockSkew(f"{what}: age {age}ms outside window [-{future_skew_ms}, {window_ms}]ms")
 
 
 def expires_at(wall_ms: int, ttl_ms: int) -> int:
@@ -704,7 +708,6 @@ def expires_at(wall_ms: int, ttl_ms: int) -> int:
     if ttl_ms < 0:
         raise ValueError("ttl_ms must be >= 0")
     return int(wall_ms) + ttl_ms
-
 
 
 class ClockHolder:

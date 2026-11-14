@@ -1,14 +1,11 @@
-
 from __future__ import annotations
 
 import hashlib
 import threading
-
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
 import libs.capchain as cc
-
 
 # Verify these against the actual cc.Token leaf schema.
 CLAIM_ISSUER = "iss"
@@ -64,9 +61,7 @@ def _string_set(m: Mapping, key: str) -> frozenset[str]:
         raise EntitlementError("BAD_TOKEN", f"empty {key}")
 
     if not all(
-        isinstance(item, str)
-        and bool(item.strip())
-        and len(item) <= MAX_CLAIM_LENGTH
+        isinstance(item, str) and bool(item.strip()) and len(item) <= MAX_CLAIM_LENGTH
         for item in value
     ):
         raise EntitlementError("BAD_TOKEN", f"invalid {key}")
@@ -76,9 +71,7 @@ def _string_set(m: Mapping, key: str) -> frozenset[str]:
 
 def _allows(allowed: frozenset[str], requested: frozenset[str]) -> bool:
     """Explicit wildcard semantics; no implicit wildcard expansion."""
-    return bool(requested) and (
-        "*" in allowed or requested.issubset(allowed)
-    )
+    return bool(requested) and ("*" in allowed or requested.issubset(allowed))
 
 
 def _decode_leaf(token: bytes) -> tuple[Mapping, int]:
@@ -122,9 +115,7 @@ class Entitlement:
                 raise ValueError(f"{name} must be a non-empty frozenset")
 
             if not all(
-                isinstance(v, str)
-                and bool(v.strip())
-                and len(v) <= MAX_CLAIM_LENGTH
+                isinstance(v, str) and bool(v.strip()) and len(v) <= MAX_CLAIM_LENGTH
                 for v in values
             ):
                 raise ValueError(f"invalid {name}")
@@ -136,10 +127,7 @@ class Entitlement:
             self.max_live_tokens,
         )
 
-        if any(
-            isinstance(v, bool) or not isinstance(v, int) or v < 1
-            for v in limits
-        ):
+        if any(isinstance(v, bool) or not isinstance(v, int) or v < 1 for v in limits):
             raise ValueError("all limits must be positive integers")
 
         if self.max_outstanding_budget_micros < self.max_budget_micros:
@@ -369,11 +357,7 @@ class EntitlementTable:
             jti_key = (issuer, checked.jti)
             prior = self._jti.get(jti_key)
 
-            if (
-                prior is not None
-                and prior[1] > now
-                and prior[0] != checked.digest
-            ):
+            if prior is not None and prior[1] > now and prior[0] != checked.digest:
                 raise EntitlementError(
                     "JTI_CONFLICT",
                     checked.jti[:32],
@@ -389,14 +373,9 @@ class EntitlementTable:
                     str(len(live)),
                 )
 
-            outstanding = sum(
-                budget for _, budget in live.values()
-            )
+            outstanding = sum(budget for _, budget in live.values())
 
-            if (
-                outstanding + checked.budget
-                > current_row.max_outstanding_budget_micros
-            ):
+            if outstanding + checked.budget > current_row.max_outstanding_budget_micros:
                 raise EntitlementError(
                     "OUTSTANDING_BUDGET_EXCEEDED",
                     f"{outstanding}+{checked.budget}",
@@ -436,8 +415,6 @@ class EntitlementTable:
 
             if not live:
                 del self._live[key]
-
-
 
     def check_and_admit(
         self,

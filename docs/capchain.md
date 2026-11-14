@@ -498,10 +498,10 @@ about the real cost; `permit.cost_micros` is the local view.
 `RevocationStore.find_revoked` is consulted with:
 
 ```python
-agents = verdict.path                         # every workload on the path
-kids   = (*verdict.kids, verdict.cnf)         # every signing key + leaf cnf
-cids   = (verdict.cid,)                       # the chain
-jtis   = verdict.jtis                         # every block
+agents = verdict.path  # every workload on the path
+kids = (*verdict.kids, verdict.cnf)  # every signing key + leaf cnf
+cids = (verdict.cid,)  # the chain
+jtis = verdict.jtis  # every block
 ```
 
 Effective revocation levels:
@@ -622,6 +622,7 @@ def peer_id(sock: ssl.SSLSocket) -> str:
             return value
     raise RejectError(Code.WRONG_HOLDER, "no URI SAN")
 
+
 def channel_binding(sock: ssl.SSLSocket) -> bytes:
     # Python 3.12+. None context is mandatory (RFC 9266 arity).
     return sock.export_keying_material(b"EXPORTER-Channel-Binding", None, 32)
@@ -632,6 +633,7 @@ def channel_binding(sock: ssl.SSLSocket) -> bytes:
 ```python
 def peer_id(writer):
     return peer_id(writer.get_extra_info("socket"))
+
 
 def channel_binding(writer):
     return channel_binding(writer.get_extra_info("socket"))
@@ -789,10 +791,10 @@ any schema state forward to the current one, not just create a fresh one.
 ```python
 from libs.capchain.checkpoint import Stores
 
-stores = await Stores.open("memory")                                    # tests
-stores = await Stores.open("redis", redis_url="redis://...")            # 5 in Redis
-stores = await Stores.open("database", postgres_dsn="postgresql://...") # 5 in PG
-stores = await Stores.from_env()                                        # per-store env
+stores = await Stores.open("memory")  # tests
+stores = await Stores.open("redis", redis_url="redis://...")  # 5 in Redis
+stores = await Stores.open("database", postgres_dsn="postgresql://...")  # 5 in PG
+stores = await Stores.from_env()  # per-store env
 ```
 
 `Stores.as_gateway_kwargs()` returns `{ledger, replay, revocation, evidence}`;
@@ -807,10 +809,15 @@ stores = await Stores.from_env()                                        # per-st
 
 ```python
 async with gateway.authorize(
-    peer_id=..., token=..., channel_binding=..., call=..., context=..., proof=...,
+    peer_id=...,
+    token=...,
+    channel_binding=...,
+    call=...,
+    context=...,
+    proof=...,
 ) as permit:
     result = await permit.execute(
-        lambda: tool.call(payload),        # sync callable OR coroutine instance
+        lambda: tool.call(payload),  # sync callable OR coroutine instance
         settle=lambda r: r.cost_micros,
     )
 ```
@@ -819,12 +826,7 @@ Handles `mark_dispatched → run → settle` in one call. Cannot end in the
 ambiguous `DISPATCHED`-without-settle state. **Use this unless you have a
 specific reason not to.**
 
-> ⚠️ `Permit.execute` uses `inspect.iscoroutine(fn)` to detect coroutines.
-> This returns `False` for `async def` **functions** (only `True` for coroutine
-> **objects**). Passing an `async def` function will run it in a thread,
-> returning a coroutine object to `settle()`, which usually raises `TypeError`.
-> Pass `lambda: my_async_fn(...)` (a coroutine object) or a sync callable.
-> See §15 L9.
+> `Permit.execute` supports both asynchronous functions (`async def`), coroutine objects, and synchronous callables (run via worker threads).
 
 ### 13.2 Manual (streaming, non-return-value cost)
 
@@ -1047,32 +1049,11 @@ matter and §14.5 says what to use instead.
 These are code defects, not design choices. They are listed so integrators can
 work around them; the surrounding docs describe the intended behavior.
 
-- **D1** — `Gateway.replay` property is infinite recursion. The property body
-  is `return self.replay`; it should be `return self._replay`. Any access
-  raises `RecursionError`. **Workaround:** hold your own reference to the
-  `ReplayStore` you passed to `GatewayConfig`; do not read `gw.replay`.
+- **D1 (RESOLVED)** — `Gateway.replay` previously had a recursion bug (`return self.replay`). Fixed to return `self._replay`.
 
-- **D2** — `GatewayConfig` uses mutable class-level defaults for its store
-  fields:
-  ```python
-  ledger:     BudgetLedger    = InMemoryBudgetLedger()
-  replay:     ReplayStore     = InMemoryReplayStore()
-  revocation: RevocationStore = InMemoryRevocationStore()
-  evidence:   EvidenceStore   = InMemoryEvidenceLog()
-  ```
-  These are evaluated **once at class definition time**. Two `GatewayConfig()`
-  instances that don't pass their own stores share the same in-memory ledger,
-  replay set, revocation set, and evidence log. **Workaround:** always pass
-  `ledger=`, `replay=`, `revocation=`, `evidence=` explicitly. `Stores.open()`
-  + `as_gateway_kwargs()` does this for you.
+- **D2 (RESOLVED)** — `GatewayConfig` previously used mutable class-level defaults evaluated at import time. Fixed using `field(default_factory=...)` for `ledger`, `replay`, `revocation`, and `evidence`.
 
-- **D3** — `Permit.execute` uses `inspect.iscoroutine(fn)` to detect async
-  callables. `iscoroutine` returns `True` for coroutine **objects** but
-  `False` for `async def` **functions**. Passing an `async def` function
-  routes through `asyncio.to_thread`, which runs it synchronously and returns
-  a coroutine object to `settle()`. **Workaround:** pass a sync callable, or
-  pass `lambda: my_async_fn(...)` — invoking the async function produces a
-  coroutine object, which `iscoroutine` does detect. See §13.1.
+- **D3 (RESOLVED)** — `Permit.execute` previously used only `inspect.iscoroutine(fn)`. Fixed to support `async def` functions, callable async objects, coroutine instances, lambdas, and synchronous functions in worker threads.
 
 - **D4** — `verify_enrollment_receipt` performs its field-set / version / typ
   check **after** the holder/cnf/timestamp checks. The checks are correct but
@@ -1212,19 +1193,18 @@ from libs.capchain.gateway import (
     ServerContext,
 )
 
-ISSUER       = "spiffe://example.org/issuer"
-WORKER       = "spiffe://example.org/worker"
-GATEWAY      = "spiffe://example.org/gateway"
-ENROLLMENT   = "spiffe://example.org/enrollment"
+ISSUER = "spiffe://example.org/issuer"
+WORKER = "spiffe://example.org/worker"
+GATEWAY = "spiffe://example.org/gateway"
+ENROLLMENT = "spiffe://example.org/enrollment"
 
 # Caller extracts these from the live TLS connection (see §11):
 #   peer_id        — the SPIFFE ID from getpeercert()["subjectAltName"]
 #   channel_binding — 32 bytes from SSLSocket.export_keying_material(...)
-CB_WORKER: bytes = os.urandom(32)      # from the workload's own TLS connection
-CB_ISSUER: bytes = os.urandom(32)      # from the issuer↔workload connection
-CB_GATEWAY: bytes = os.urandom(32)     # from the workload↔gateway connection
-PEER_WORKER = WORKER        # = peer_id for the connection
-
+CB_WORKER: bytes = os.urandom(32)  # from the workload's own TLS connection
+CB_ISSUER: bytes = os.urandom(32)  # from the issuer↔workload connection
+CB_GATEWAY: bytes = os.urandom(32)  # from the workload↔gateway connection
+PEER_WORKER = WORKER  # = peer_id for the connection
 
 
 async def main() -> None:
@@ -1233,7 +1213,7 @@ async def main() -> None:
     # ----------------------------------------------------------------
     # Step 0 — deployment setup
     # ----------------------------------------------------------------
-    ea         = cc.CapChainKey.generate(agent_id=ENROLLMENT)
+    ea = cc.CapChainKey.generate(agent_id=ENROLLMENT)
     issuer_key = cc.CapChainKey.generate(agent_id=ISSUER)
     worker_key = cc.CapChainKey.generate(agent_id=WORKER)
 
@@ -1243,25 +1223,26 @@ async def main() -> None:
     )
     policy = Policy(
         root_issuers=frozenset({ISSUER}),
-        edges=frozenset({
-                    (ISSUER, WORKER),
-                    # (WORKER,     "issuer"),
-                }),      
+        edges=frozenset(
+            {
+                (ISSUER, WORKER),
+                # (WORKER,     "issuer"),
+            }
+        ),
         max_depth=2,
     )
-
-           
 
     async with await Stores.open("memory") as stores:
         gw = Gateway(
             GatewayConfig(
-            agent_id=GATEWAY,
-            roots=roots,
-            policy=policy,
-            clock=lambda: now,                        # frozen clock for demo
-            cost_model=lambda call, ctx, v: 10_000,   # reserve $0.01 per call
-            **stores.as_gateway_kwargs(),
-        ))
+                agent_id=GATEWAY,
+                roots=roots,
+                policy=policy,
+                clock=lambda: now,  # frozen clock for demo
+                cost_model=lambda call, ctx, v: 10_000,  # reserve $0.01 per call
+                **stores.as_gateway_kwargs(),
+            )
+        )
 
         # ----------------------------------------------------------------
         # Step 1 — enroll worker_key under WORKER (in production: over mTLS)
@@ -1279,7 +1260,10 @@ async def main() -> None:
             now=now,
         )
         receipt = cc.make_enrollment_receipt(
-            ea, holder=WORKER, cnf=cnf, now=now,
+            ea,
+            holder=WORKER,
+            cnf=cnf,
+            now=now,
         )
         enrolled = cc.EnrolledKey(
             holder=WORKER,
@@ -1298,7 +1282,7 @@ async def main() -> None:
         )
         token = cc.mint(
             issuer_key,
-            enrolled, 
+            enrolled,
             ea.public_key,
             issuer=ISSUER,
             holder=WORKER,

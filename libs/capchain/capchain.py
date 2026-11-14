@@ -1,32 +1,29 @@
-
-
 from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import json
 import logging
-from typing import Optional, Any
-from dataclasses import dataclass
-
-from contextlib import contextmanager
-from collections.abc import Iterable
 import secrets
+import time
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Any
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
-from cryptography.hazmat.primitives import serialization
-from cryptography.exceptions import InvalidSignature
-from collections.abc import Iterable, Mapping
-import hmac
 
-import json
-import hashlib
-import base64
-from enum import StrEnum
 log = logging.getLogger(__name__)
 
 ENROLLMENT_CTX = b"capchain/enrollment-receipt-v1\x00"
 ENROLLMENT_RECEIPT_FIELDS = frozenset({"ver", "typ", "holder", "cnf", "nbf", "exp"})
-MAX_RECEIPT_TTL_SECONDS = 86400 * 7   # one week; tune to your rotation cadence
+MAX_RECEIPT_TTL_SECONDS = 86400 * 7  # one week; tune to your rotation cadence
 
 # Wire version and derived labels
 
@@ -155,19 +152,33 @@ MAX_PIN_VALUE_BYTES: int = 4096
 
 # Field-set shapes
 
-_DELEGATION_BASE = frozenset({
-    "ver", "typ", "cid", "jti", "iss", "holder", "cnf", "sid",
-    "task", "scope", "nbf", "exp", "max_depth", "prev", "model",
-})
-BLOCK_FIELDS:     frozenset[str] = _DELEGATION_BASE                     # delegation blocks
+_DELEGATION_BASE = frozenset(
+    {
+        "ver",
+        "typ",
+        "cid",
+        "jti",
+        "iss",
+        "holder",
+        "cnf",
+        "sid",
+        "task",
+        "scope",
+        "nbf",
+        "exp",
+        "max_depth",
+        "prev",
+        "model",
+    }
+)
+BLOCK_FIELDS: frozenset[str] = _DELEGATION_BASE  # delegation blocks
 AUTHORITY_FIELDS: frozenset[str] = _DELEGATION_BASE | {"enrollment_receipt"}  # block 0 only
 
 POP_FIELDS: frozenset[str] = frozenset(
     {"ver", "typ", "aud", "ath", "res", "act", "ph", "ts", "nonce", "cb"}
 )
 ENROLL_FIELDS: frozenset[str] = frozenset({"ver", "typ", "aud", "cb", "ts"})
-SCOPE_FIELDS: frozenset[str] = frozenset(
-    {"tools", "budget", "domains", "audience"})
+SCOPE_FIELDS: frozenset[str] = frozenset({"tools", "budget", "domains", "audience"})
 
 
 class Code(StrEnum):
@@ -225,7 +236,8 @@ class Code(StrEnum):
     ENROLLMENT_MISMATCH = "ENROLLMENT_MISMATCH"
     ENROLLMENT_MALFORMED = "ENROLLMENT_MALFORMED"
 
-    TOO_FEW_SIGNATURES = "TOO_FEW_SIGNATURES"   
+    TOO_FEW_SIGNATURES = "TOO_FEW_SIGNATURES"
+
 
 class Model:
     """How a token is bound to its presenter."""
@@ -258,7 +270,7 @@ class RejectError(Exception):
         code: Code,
         detail: str = "",
         *,
-        cause: Optional[BaseException] = None,
+        cause: BaseException | None = None,
     ) -> None:
         super().__init__(f"{code}: {detail}" if detail else code)
         self.code = code
@@ -267,16 +279,15 @@ class RejectError(Exception):
             self.__cause__ = cause
 
 
-
 def error(
     code: Code,
     detail: str = "",
     *,
-    cause: Optional[BaseException] = None,
+    cause: BaseException | None = None,
 ) -> RejectError:
-    return RejectError(code, detail,  cause=cause)
+    return RejectError(code, detail, cause=cause)
 
- 
+
 def _RejectError_float(text: str) -> None:
     raise RejectError(
         Code.CANONICAL_FORM,
@@ -383,6 +394,7 @@ def _validate(value: Any, depth: int = 0) -> None:
         f"unserialisable {type(value).__name__}",
     )
 
+
 def _normalize(name: str, values: Iterable[str], limit: int) -> frozenset[str]:
     if isinstance(values, (str, bytes)):
         raise ValueError(f"{name} must be a collection of strings, not a string")
@@ -396,6 +408,7 @@ def _normalize(name: str, values: Iterable[str], limit: int) -> frozenset[str]:
         raise ValueError(f"too many {name}")
     return result
 
+
 def _str_set(name: str, values) -> frozenset[str]:
     if isinstance(values, (str, bytes)):
         raise ValueError(f"{name} must be an iterable, not a single value")
@@ -406,6 +419,7 @@ def _str_set(name: str, values) -> frozenset[str]:
     if not all(isinstance(x, str) and 0 < len(x) <= MAX_STRING_CHARS for x in out):
         raise ValueError(f"{name}: non-empty strings only")
     return out
+
 
 def encode(obj: dict) -> bytes:
     """Canonical JSON: sorted keys, no whitespace, integers only."""
@@ -488,6 +502,7 @@ def bounded_str(value: object, limit: int) -> bool:
 def is_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
+
 def thumbprint(public_key: bytes) -> str:
     """SHA-256 of a raw Ed25519 public key, lowercase hex."""
     if not isinstance(public_key, bytes) or len(public_key) != PUBLIC_KEY_BYTES:
@@ -523,10 +538,7 @@ def verify_signature(
             signature, domain_separate(context, message)
         )
     except (InvalidSignature, ValueError):
-        raise RejectError(code, detail) from None # type: ignore
-
-
-
+        raise RejectError(code, detail) from None  # type: ignore
 
 
 class TrustedRoots:
@@ -536,11 +548,11 @@ class TrustedRoots:
     are authenticated by the chain itself.
     """
 
-    __slots__ = ("_by_thumbprint","enrollment_authority_key")
+    __slots__ = ("_by_thumbprint", "enrollment_authority_key")
 
     def __init__(
         self,
-        enrollment_authority_key:bytes,
+        enrollment_authority_key: bytes,
         issuers: Mapping[str, bytes | Iterable[bytes]],
     ) -> None:
         self._by_thumbprint: dict[str, tuple[str, bytes]] = {}
@@ -558,7 +570,7 @@ class TrustedRoots:
             key_list = [keys] if isinstance(keys, (bytes, bytearray)) else list(keys)
             if not key_list:
                 raise ValueError(f"{issuer_id}: at least one key required")
-            
+
             for key in key_list:
                 if not isinstance(key, (bytes, bytearray)):
                     raise ValueError(f"{issuer_id}: keys must be raw bytes")
@@ -619,19 +631,20 @@ class Block:
         ).hexdigest()
 
     def to_b64e(self) -> dict:
-        return   {
+        return {
             "b": b64e(self.body_raw),
             "s": b64e(self.signature),
             "k": b64e(self.signer_public_key),
         }
 
     @classmethod
-    def from_b64d(cls, entry) -> "Block":
+    def from_b64d(cls, entry) -> Block:
         return cls(
-                b64d(entry["b"]),
-                b64d(entry["s"]),
-                b64d(entry["k"]),
-            )
+            b64d(entry["b"]),
+            b64d(entry["s"]),
+            b64d(entry["k"]),
+        )
+
 
 def link_hash(block: Block) -> str:
     """Length-prefixed hash binding a block to its successor's `prev`."""
@@ -654,8 +667,6 @@ def sign_block(key: CapChainKey, body: dict) -> Block:
         key.sign(CTX_BLOCK, raw),
         key.public_key,
     )
-
-
 
 
 @dataclass(frozen=True, slots=True)
@@ -776,6 +787,7 @@ class Scope:
         except ValueError as exc:
             raise RejectError(Code.TOKEN_MALFORMED, str(exc)) from None
 
+
 def derive_jti(prev_link: str, issuer: str, scope: Scope) -> str:
     """Content-addressed jti: siblings from the same (parent block, issuer,
     scope) share one ledger hop, so a delegator's total spend in a given
@@ -800,7 +812,7 @@ class Token:
     @property
     def root(self):
         return self.blocks[0]
-    
+
     @property
     def leaf(self):
         return self.blocks[-1]
@@ -968,14 +980,16 @@ def _require_channel_binding(
         )
     return bytes(value)
 
+
 def _check_timestamp(value: object, now: int, max_skew: int) -> None:
     if not is_int(value):
         raise RejectError(Code.POP_MALFORMED, "ts")
-    if abs(now - value) > max_skew: # type: ignore
+    if abs(now - value) > max_skew:  # type: ignore
         raise RejectError(
             Code.POP_STALE,
             f"ts={value} now={now}",
         )
+
 
 def _check_channel_binding(body: dict, expected: object) -> None:
     binding = _require_channel_binding(expected)
@@ -1033,6 +1047,7 @@ def make_pop(
         key.sign(CTX_POP, raw),
         key.public_key,
     ).encode()
+
 
 def verify_pop(
     envelope: Signed,
@@ -1162,6 +1177,7 @@ def verify_enrollment(
 
 # Minting, attenuation, and chain verification.
 
+
 @dataclass(frozen=True, slots=True)
 class Verdict:
     """Everything a verifier learns from a cryptographically valid chain."""
@@ -1181,6 +1197,7 @@ class Verdict:
     task: str
     expires_at: int
     depth: int
+
 
 @dataclass(frozen=True, slots=True)
 class EnrolledKey:
@@ -1276,7 +1293,7 @@ class CapChainKey:
             body=body,
             channel_binding=channel_binding,
             nonce=nonce,
-            now=now
+            now=now,
         )
 
 
@@ -1308,19 +1325,21 @@ def make_enrollment_receipt(
     """Issue a receipt. Only the enrollment service holds `enrollment_key`."""
     if not is_int(now) or now < 0:
         raise ValueError("now must be a non-negative int")
-    
+
     if not bounded_str(holder, MAX_AGENT_ID_CHARS) or not is_thumbprint(cnf):
         raise ValueError("bad holder or cnf")
     if not (is_int(ttl_seconds) and 0 < ttl_seconds <= MAX_RECEIPT_TTL_SECONDS):
         raise ValueError("bad ttl_seconds")
-    raw = encode({
-        "ver": WIRE_VERSION,
-        "typ": "enrollment",
-        "holder": holder,
-        "cnf": cnf,
-        "nbf": now,
-        "exp": now + ttl_seconds,
-    })
+    raw = encode(
+        {
+            "ver": WIRE_VERSION,
+            "typ": "enrollment",
+            "holder": holder,
+            "cnf": cnf,
+            "nbf": now,
+            "exp": now + ttl_seconds,
+        }
+    )
     return Signed(
         raw,
         enrollment_key.sign(ENROLLMENT_CTX, raw),
@@ -1342,9 +1361,12 @@ def verify_enrollment_receipt(
     if not hmac.compare_digest(envelope.public_key, verifier):
         raise RejectError(Code.ENROLLMENT_MISMATCH, "receipt signer")
     verify_signature(
-        envelope.public_key, envelope.signature,
-        ENROLLMENT_CTX, envelope.body_raw,
-        Code.ENROLLMENT_BAD_SIGNATURE, "receipt",
+        envelope.public_key,
+        envelope.signature,
+        ENROLLMENT_CTX,
+        envelope.body_raw,
+        Code.ENROLLMENT_BAD_SIGNATURE,
+        "receipt",
     )
     body = decode(envelope.body_raw)
     if set(body) != ENROLLMENT_RECEIPT_FIELDS or body["typ"] != "enrollment":
@@ -1365,9 +1387,10 @@ def verify_enrollment_receipt(
     ):
         raise RejectError(Code.ENROLLMENT_MALFORMED, "shape/ver/typ")
 
+
 def mint(
     root_key: CapChainKey,
-    enrolled_key: EnrolledKey,  
+    enrolled_key: EnrolledKey,
     enrollment_verifier: bytes,
     *,
     issuer: str,
@@ -1433,11 +1456,11 @@ def mint(
                     "prev": GENESIS_LINK,
                     "model": Model.KEY_BOUND,
                     "enrollment_receipt": b64e(enrolled_key.receipt),  # NEW
-
                 },
             ),
         )
     )
+
 
 def attenuate(
     parent: Token,
@@ -1525,6 +1548,7 @@ def attenuate(
             ),
         )
     )
+
 
 def verify_chain(
     raw_token: bytes,
@@ -1801,3 +1825,34 @@ def make_scope(*, tools, budget_micros, audience, domains=()):
         audience=_str_set("audience", audience),
         domains=_str_set("domains", domains),
     )
+
+
+def make_delegate(
+    parent_token: bytes,
+    key: CapChainKey,
+    *,
+    delegate_id: str,
+    delegate_cnf: str,
+    tools: list[str],
+    budget_micros: int,
+    audience: list[str],
+    ttl_seconds: int,
+    domains: tuple[str, ...] = (),
+    now=int(time.time()),
+) -> bytes:
+    """Attenuate `parent_token` for a downstream node (e.g. Task Loop -> LLM/DB)."""
+    scope = make_scope(
+        tools=tools,
+        budget_micros=budget_micros,
+        audience=audience,
+        domains=domains,
+    )
+    return attenuate(
+        Token.decode(parent_token),
+        key,
+        holder=delegate_id,
+        cnf=delegate_cnf,
+        scope=scope,
+        ttl_seconds=ttl_seconds,
+        now=now,
+    ).encode()

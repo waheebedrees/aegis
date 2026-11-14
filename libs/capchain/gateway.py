@@ -1,34 +1,31 @@
 from __future__ import annotations
-import contextlib
-import logging
-from typing import Awaitable, Callable, Protocol, TypeVar, Any, AsyncGenerator
-from dataclasses import dataclass
-import inspect
-import asyncio
-from contextlib import asynccontextmanager
-from collections.abc import Iterable
-import uuid
-import time
-import hashlib
-import os
-import time
 
-from  libs.capchain.checkpoint import (
+import asyncio
+import contextlib
+import inspect
+import logging
+import time
+import uuid
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from typing import TypeVar
+
+import libs.capchain.capchain as cc
+from libs.capchain.checkpoint import (
     BudgetLedger,
-    migrate,
     Evidence,
-    RevocationStore,
-    ReplayStore,
     EvidenceStore,
     InMemoryBudgetLedger,
     InMemoryEvidenceLog,
-    ReservationState,
     InMemoryReplayStore,
     InMemoryRevocationStore,
+    ReplayStore,
+    ReservationState,
+    RevocationStore,
     SpendHandle,
-
 )
-import libs.capchain.capchain as cc 
+
 log = logging.getLogger(__name__)
 
 
@@ -38,6 +35,7 @@ def _now(clock: Callable[[], int], override: int | None) -> int:
     if type(override) is not int or override < 0:
         raise ValueError("now must be a non-negative integer timestamp")
     return override
+
 
 @dataclass(frozen=True, slots=True)
 class Policy:
@@ -92,6 +90,7 @@ class ServerContext:
         if not isinstance(self.domain, str) or len(self.domain) > 512:
             raise ValueError("domain")
 
+
 @dataclass(frozen=True, slots=True)
 class Call:
     """The operation being authorized. `tool` is "resource:action"."""
@@ -116,10 +115,10 @@ class Call:
         return f"{self.resource}:{self.action}"
 
 
-
 CostModel = Callable[[Call, ServerContext, cc.Verdict], int]
 
 T = TypeVar("T")
+
 
 class Permit:
     """An authorized call and its spend lifecycle.
@@ -145,7 +144,7 @@ class Permit:
         *,
         verdict: cc.Verdict,
         spend: SpendHandle,
-        ledger:BudgetLedger,
+        ledger: BudgetLedger,
         evidence: EvidenceStore,
         record: Evidence,
         clock: Callable[[], int],
@@ -278,9 +277,9 @@ class Permit:
 
     async def execute(
         self,
-        fn: Callable[[], T],
+        fn: Callable[[], T] | Awaitable[T],
         *,
-        settle: Callable[[T], int],
+        settle: Callable[[T], int | Awaitable[int]],
     ) -> T:
         """Mark dispatched, run `fn`, then settle with `settle(result)`.
 
@@ -291,12 +290,26 @@ class Permit:
         """
         await self.mark_dispatched()
         if inspect.iscoroutine(fn):
-            result = await fn ()
+            result = await fn
+        elif inspect.iscoroutinefunction(fn):
+            result = await fn()
+        elif callable(fn):
+            if inspect.iscoroutinefunction(getattr(fn, "__call__", None)):
+                result = await fn()
+            else:
+                result = await asyncio.to_thread(fn)
+                if inspect.iscoroutine(result):
+                    result = await result
+        elif inspect.isawaitable(fn):
+            result = await fn
         else:
-            result = await asyncio.to_thread(fn)
-        await self.settle(settle(result))
-        return result
+            raise TypeError(f"execute expects a callable or awaitable, got {type(fn).__name__}")
 
+        cost = settle(result)
+        if inspect.iscoroutine(cost) or inspect.isawaitable(cost):
+            cost = await cost
+        await self.settle(cost)
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,10 +318,10 @@ class GatewayConfig:
     roots: cc.TrustedRoots
     policy: Policy
     allowed_models: Iterable[str] = cc.MODELS
-    ledger: BudgetLedger = InMemoryBudgetLedger()
-    replay: ReplayStore  = InMemoryReplayStore()
-    revocation: RevocationStore = InMemoryRevocationStore()
-    evidence: EvidenceStore = InMemoryEvidenceLog()
+    ledger: BudgetLedger = field(default_factory=InMemoryBudgetLedger)
+    replay: ReplayStore = field(default_factory=InMemoryReplayStore)
+    revocation: RevocationStore = field(default_factory=InMemoryRevocationStore)
+    evidence: EvidenceStore = field(default_factory=InMemoryEvidenceLog)
     pop_max_skew: int = 30
     chain_max_skew: int | None = None
     domain_required_tools: Iterable[str] = ()
@@ -333,13 +346,13 @@ class GatewayConfig:
         if self.replay.ttl_seconds <= 2 * self.pop_max_skew:
             raise ValueError("replay TTL must exceed 2 * pop_max_skew")
 
-        
+
 class Gateway:
     """Authorizes requests presented over mTLS against a capability chain."""
 
     def __init__(
         self,
-        cfg:GatewayConfig,
+        cfg: GatewayConfig,
     ) -> None:
         if not isinstance(cfg, GatewayConfig):
             raise ValueError("unkown config type")
@@ -347,29 +360,30 @@ class Gateway:
         self._cfg = cfg
         self.agent_id = self._cfg.agent_id
         self._roots = self._cfg.roots
-        self._policy =  self._cfg.policy
+        self._policy = self._cfg.policy
         self._allowed_models = self._cfg.allowed_models
-        self._skew =  self._cfg.pop_max_skew
-        self._domain_required =  self._cfg.domain_required_tools
-        self._clock =  self._cfg.clock
-        self._cost_model =  self._cfg.cost_model
-        self._chain_skew =  (
-            self._cfg.chain_max_skew 
-            if  self._cfg.chain_max_skew is not None
-             else  self._cfg.pop_max_skew
+        self._skew = self._cfg.pop_max_skew
+        self._domain_required = self._cfg.domain_required_tools
+        self._clock = self._cfg.clock
+        self._cost_model = self._cfg.cost_model
+        self._chain_skew = (
+            self._cfg.chain_max_skew
+            if self._cfg.chain_max_skew is not None
+            else self._cfg.pop_max_skew
         )
         self._ledger = self._cfg.ledger
-        self._replay = self._cfg.replay 
-        self._evidence = self._cfg.evidence 
+        self._replay = self._cfg.replay
+        self._evidence = self._cfg.evidence
         self._revocation = self._cfg.revocation
 
     @property
     def evidence(self) -> EvidenceStore:
         return self._evidence
+
     @property
     def replay(self) -> ReplayStore:
-        return self.replay
-    
+        return self._replay
+
     @property
     def revocation(self) -> RevocationStore:
         return self._revocation
@@ -383,7 +397,7 @@ class Gateway:
     async def authorize(
         self,
         *,
-        peer_id:str ,
+        peer_id: str,
         token: bytes,
         channel_binding: bytes,
         call: Call,
@@ -493,7 +507,6 @@ class Gateway:
                     "authorize exited with a dispatched, unsettled permit; "
                     "reservation committed at the reserved amount",
                 )
-
 
     async def _admit(
         self,
@@ -612,7 +625,6 @@ class Gateway:
                     f"domain {context.domain}",
                 )
 
-        
         elif call.tool in self._domain_required:
             raise cc.error(
                 cc.Code.SCOPE_MISMATCH,
@@ -648,7 +660,7 @@ class Gateway:
                 f"cost model: {type(exc).__name__}",
             ) from exc
         if not cc.is_int(reserve_micros) or reserve_micros < 0:
-            raise cc. error(
+            raise cc.error(
                 cc.Code.INTERNAL,
                 f"cost model returned {reserve_micros!r}",
             )
@@ -661,7 +673,7 @@ class Gateway:
             )
 
         try:
-            revoked = await  self._revocation.find_revoked(
+            revoked = await self._revocation.find_revoked(
                 agents=verdict.path,
                 kids=(
                     *verdict.kids,
@@ -705,7 +717,7 @@ class Gateway:
 
         # 6. Admission evidence.
         try:
-            record =  await self._evidence.append(
+            record = await self._evidence.append(
                 {
                     "action_id": uuid.uuid4().hex,
                     "code": cc.Code.OK,
@@ -818,4 +830,3 @@ class Gateway:
                     f"edge {source} -> {target}",
                 )
         return verdict
-
