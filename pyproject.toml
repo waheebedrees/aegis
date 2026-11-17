@@ -4,8 +4,10 @@ name = "aegis"
 version = "0.0.0"
 requires-python = ">=3.11"
 dependencies = [
+    "cbor2>=6.3.0",
     "cryptography>=46.0.7",
     "dotenv>=0.9.9",
+    "hypothesis>=6.170.15",
     "psycopg-pool>=3.3.3",
     "psycopg[binary]>=3.3.8",
     "pydantic>=2.14.3",
@@ -48,7 +50,6 @@ python_version = "3.11"
 strict = true
 
 [project.scripts]
-# aegis = "gov:main"
 aegis = "cli.agentctl.agentctl.main:main"
 [build-system]
 requires = ["hatchling"]
@@ -62,3 +63,11 @@ exclude = [
   "config/node-*.toml",
   "**/__pycache__",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*" = ["S101", "S110", 'ASYNC109', "S105"]
+"libs/**/*" = ["S101", "S110", 'ASYNC109', "S105"]

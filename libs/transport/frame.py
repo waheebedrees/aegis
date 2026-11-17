@@ -45,7 +45,6 @@ from types import MappingProxyType
 from typing import (
     Protocol,
     TypeGuard,
-    Union,
 )
 
 __all__ = [
@@ -140,7 +139,8 @@ MAX_BODY_BYTES = MAX_FRAME_BYTES - FIXED_OVERHEAD
 OPEN_MAX_TOKEN = 4 * 1024  # was 32 KiB: bounds per-stream retention
 OPEN_MAX_POP = 1 * 1024
 OPEN_MAX_BODY = 4 * 1024
-HELLO_MAX_BODY = 64
+# HELLO_MAX_BODY = 64
+HELLO_MAX_BODY = 2112  # 16-byte fixed hello + 2048 extension block + slack
 MAX_REASON_BYTES = 128
 PING_NONCE_BYTES = 8
 
@@ -837,10 +837,10 @@ class StreamCloseFailed:
     reason: str
 
 
-RecvOutcome = Union[FrameReceived, StreamClosed]
-WriteOutcome = Union[FrameWritten, StreamClosed]
-CloseOutcome = Union[StreamCloseSucceeded, StreamCloseFailed]
+RecvOutcome = FrameReceived | StreamClosed
 
+WriteOutcome = FrameWritten | StreamClosed
+CloseOutcome = StreamCloseSucceeded | StreamCloseFailed
 
 def _to_timeout(value: object, name: str) -> float | None:
     if value is None:

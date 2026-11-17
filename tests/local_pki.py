@@ -1,19 +1,17 @@
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, UTC, timedelta
-import sys
 import os
-from dataclasses import dataclass
-from pathlib import Path
 import ssl
-import tempfile
-from cryptography import x509
-from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.asymmetric import ec, ed25519
-from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
+import sys
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
-from typing import Callable, Collection, Iterable, Mapping, Optional
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 # ALPN is a *string*. set_alpn_protocols() requires Iterable[str] and
 # selected_alpn_protocol() returns str | None. Never make this bytes.
@@ -81,8 +79,9 @@ def _harden(fd, path):
 
 
 def _harden_windows(path: Path) -> None:
-    import win32security, ntsecuritycon  # type: ignore
+    import ntsecuritycon  # type: ignore
     import win32api  # type: ignore
+    import win32security
 
     sd = win32security.SECURITY_DESCRIPTOR()
     sd.SetSecurityDescriptorDacl(1, None, 0)  # type: ignore # NULL DACL == deny everyone
@@ -154,7 +153,7 @@ class NodeSpec:
     host: str
     port: int
     spiffe_id: str
-    nodes: dict
+    peers: dict[str, Endpoint]
     certs: CertFiles
     trust_domain: str
     server_ssl: ssl.SSLContext | None = None
@@ -170,13 +169,19 @@ class NodeSpec:
         return f"{SPIFFE_URI_PREFIX}{self.trust_domain}"
 
     def get_node_spiffe_id(self, name):
-        spiffe_id = self.nodes.get(name)
+        spiffe_id = self.peers.get(name)
         if spiffe_id is None:
             raise ValueError("spiffe_id not register")
-        return spiffe_id
+        return spiffe_id.spiffe_id
+
+    def get_endpoint_for(self, name):
+        endpoint = self.peers.get(name)
+        if endpoint is None:
+            raise ValueError("endpoint not register")
+        return endpoint
 
     def allowd(self):
-        return authorize_one_of({e for e in self.nodes.values()})
+        return authorize_one_of({e.spiffe_id for e in self.peers.values()})
 
     def server_adapter(self):
         from libs.transport.tls import make_adapter
@@ -191,8 +196,6 @@ class NodeSpec:
     def client_adapter(self, target_id):
         from libs.transport.tls import make_adapter
 
-        print(f"{target_id=}")
-        print(f"{self.nodes=}")
         spiffe_id = self.get_node_spiffe_id(target_id)
         return make_adapter(
             peer_id=self.spiffe_id,
@@ -298,7 +301,7 @@ def generate_node_ca(
     node_id: str = "aegis-test-ca",
     validity_days: int = 3650,
     *,
-    not_after_seconds_from_now: Optional[float] = None,
+    not_after_seconds_from_now: float | None = None,
 ):
     key = ec.generate_private_key(ec.SECP256R1())
     now = utcnow()
@@ -354,10 +357,10 @@ class PKI:
     def __init__(
         self,
         tmp_path: Path,
-        nodes,
+        endpoints: dict,
         trust_domain: str = "aegis-test",
         *,
-        ca_not_after_seconds_from_now: Optional[float] = None,
+        ca_not_after_seconds_from_now: float | None = None,
     ) -> None:
         tmp_path.mkdir(parents=True, exist_ok=True)
         self.tmp_path = tmp_path
@@ -368,13 +371,18 @@ class PKI:
             self._node_spiffe,
             not_after_seconds_from_now=ca_not_after_seconds_from_now,
         )
-        self._nodes = {name: f"{self._node_spiffe}/{name}" for name in nodes}
+        self._endpoints = {
+            name: Endpoint(
+                spiffe_id=f"{self._node_spiffe}/{name}", port=value["port"], host=value["host"]
+            )
+            for name, value in endpoints.items()
+        }
 
     def get_node_spiffe_id(self, name):
-        spiffe_id = self._nodes.get(name)
+        spiffe_id = self._endpoints.get(name)
         if spiffe_id is None:
             raise ValueError("spiffe_id not register")
-        return spiffe_id
+        return spiffe_id.spiffe_id
 
     def make_cert(self, name, agent_not_after_seconds: float | None = None) -> CertFiles:
         spiffe_id = self.get_node_spiffe_id(name)
@@ -388,8 +396,10 @@ class PKI:
             trust_domain=self.trust_domain,
         )
 
-    def make_node(self, name, host, port, agent_not_after_seconds: float | None = None):
+    def make_node(self, name, agent_not_after_seconds: float | None = None):
 
+        end = self._endpoints.get(name)
+        assert end
         spiffe_id = self.get_node_spiffe_id(name)
         certs = self.make_cert(name, agent_not_after_seconds)
         server_ssl = server_ssl_context(
@@ -403,13 +413,13 @@ class PKI:
             cafile=self.ca_cert_path,
         )
         return NodeSpec(
+            peers=self._endpoints,
             role=name,
             certs=certs,
             spiffe_id=spiffe_id,
-            host=host,
-            port=port,
+            host=end.host,
+            port=end.port,
             server_ssl=server_ssl,
-            nodes=self._nodes,
             trust_domain=self.trust_domain,
             client_ssl=client_ssl,
         )

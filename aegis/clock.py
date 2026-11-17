@@ -56,14 +56,12 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
-
 
 # ══════════════════════════════════════════════════════════════════════════
 # Exceptions
@@ -432,7 +430,7 @@ class TimeBeacon:
         cls,
         raw: bytes,
         verifier: Ed25519PublicKey,
-    ) -> "TimeBeacon":
+    ) -> TimeBeacon:
         """Verify the envelope and derive every field from the signed body.
 
         Any tampering with the body invalidates the signature. Any
@@ -515,7 +513,7 @@ class BeaconClock(Clock):
         initial_beacon_raw: bytes,
         skew_ms: int = 1000,
         max_drift_ms: int = 60_000,
-        mono_source: Optional[Clock] = None,
+        mono_source: Clock | None = None,
     ) -> None:
         if isinstance(skew_ms, bool) or not isinstance(skew_ms, int):
             raise ValueError("skew_ms must be an int")
@@ -530,7 +528,7 @@ class BeaconClock(Clock):
         self._skew_ms = skew_ms
         self._max_drift_ms = max_drift_ms
         self._lock = threading.Lock()
-        self._anchor: Optional[TimeBeacon] = None
+        self._anchor: TimeBeacon | None = None
         self._anchor_mono_ms = 0
         self._mono = MonotonicGuard(mono_source or SystemClock())
 
@@ -729,7 +727,7 @@ class ClockHolder:
 
     __slots__ = ("_clock",)
 
-    def __init__(self, clock: Optional[Clock] = None) -> None:
+    def __init__(self, clock: Clock | None = None) -> None:
         self._clock = clock or SystemClock()
 
     @property

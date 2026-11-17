@@ -187,8 +187,8 @@ from typer import BadParameter
 
 import libs.capchain.capchain as cc
 from config.governance import (
-    ConfigError,
     _PEER_NAME,
+    ConfigError,
     compile_document,
     load_node_config,
     load_raw,
@@ -319,7 +319,7 @@ def _fmt_time(v: Any) -> str:
     if isinstance(v, dt.datetime):
         if v.tzinfo is None:
             raise ConfigError(f"{v!r}: timestamps must be timezone-aware")
-        return v.astimezone(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+        return v.astimezone(dt.UTC).isoformat().replace("+00:00", "Z")
     s = str(v).strip()
     if s.endswith("Z"):
         return s
@@ -735,7 +735,7 @@ def gen_node(
     listen: Annotated[str | None, typer.Option("--listen", help="HOST:PORT")] = None,
     peer: Annotated[
         list[str], typer.Option("--peer", help="NAME=HOST:PORT@SPIFFE_ID (repeatable)")
-    ] = [],
+    ] = None,
     authority: Annotated[Path, typer.Option("--authority")] = Path("keys/authority.pub"),
     bundle: Annotated[Path, typer.Option("--bundle")] = Path("config/governance.bundle"),
     cert: Annotated[Path | None, typer.Option("--cert")] = None,
@@ -750,6 +750,8 @@ def gen_node(
     force: Annotated[bool, typer.Option("--force")] = False,
 ) -> None:
     """Generate a node-*.toml from a short flag set."""
+    if peer is None:
+        peer = []
     if role not in _REQUIRED_PEERS:
         raise BadParameter(f"unknown role {role!r}")
     if environment not in ("development", "production"):
@@ -881,11 +883,11 @@ def _summarize(doc: dict) -> dict:
 
 def _collect_warnings(doc: dict) -> list[str]:
     out: list[str] = []
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
 
     def _as_utc(v: Any) -> dt.datetime | None:
         if isinstance(v, dt.datetime):
-            return v if v.tzinfo else v.replace(tzinfo=dt.timezone.utc)
+            return v if v.tzinfo else v.replace(tzinfo=dt.UTC)
         if isinstance(v, str):
             try:
                 s = v.replace("Z", "+00:00")

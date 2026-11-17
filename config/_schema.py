@@ -29,9 +29,10 @@ Wildcard conventions (three different ones, deliberately):
 """
 
 from __future__ import annotations
+
 import datetime as dt
-from pathlib import Path
-from typing import Any, Iterable, Mapping
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 __all__ = [
     "ConfigError",

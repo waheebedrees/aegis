@@ -1,38 +1,22 @@
 from __future__ import annotations
-from dataclasses import dataclass
 
 import asyncio
-import hashlib
-import json
 import logging
 import os
-import ssl
-import threading
-import time
 import uuid
-from collections import deque
-from datetime import datetime, timezone
-from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
-from libs.capchain.checkpoint import check_contract, Stores, migrate
 from libs.agentid.identity import (
-    bootstrap,
-    Bootstrap,
     IdentitySnapshot,
-    SSLContextHolder,
-    SVIDMaterial,
-    SVIDWatcher,
-    IdentityService,
-    IdentityError,
+    bootstrap,
 )
-
+from libs.capchain.checkpoint import Stores, check_contract, migrate
 
 log = logging.getLogger("aegis.node")
 
 
 def line(tag: str, snap: IdentitySnapshot) -> None:
-    now = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    now = datetime.now(UTC).strftime("%H:%M:%S")
     print(
         f"{now} {tag:<7} "
         f"cred={snap.credential_id[12:24]}… "

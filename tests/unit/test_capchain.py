@@ -5,24 +5,22 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Literal, Mapping
-
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable, Optional
+from typing import Literal
 
 import pytest
+from local_pki import PKI, NodeSpec
+from pydantic import BaseModel, Field
+
 import libs.capchain as cc
-
-from local_pki import NodeSpec, PKI
-from pydantic import BaseModel, Field, field_validator, model_validator
-
 from aegis.clock import (
     Clock,
     ClockSkew,
-    require_within_skew,
     SystemClock,
+    require_within_skew,
 )
 from libs.transport.stream_session import (
     Stream,
@@ -32,7 +30,6 @@ from libs.transport.stream_session import (
     TransportError,
 )
 from libs.transport.tls import TlsConnection, TransportSetupError
-
 
 log = logging.getLogger(__name__)
 
@@ -46,24 +43,37 @@ EXPECTED_TASK = "test-task"
 pytestmark = pytest.mark.asyncio
 
 
+endpoints = {
+    "node-1": {"port": 5555, "host": "127.0.0.1"},
+    "node-2": {"port": 5554, "host": "127.0.0.1"},
+    "node-3": {"port": 5553, "host": "127.0.0.1"},
+    "gateway": {"port": 5552, "host": "127.0.0.1"},
+}
+
+
 @pytest.fixture
 def pki(tmp_path):
-    return PKI(tmp_path, ["node-1", "node-2", "gateway"], "aegis-test")
+    return PKI(tmp_path, endpoints, "aegis-test")
 
 
 @pytest.fixture
 def server_node(pki):
-    return pki.make_node("node-1", "127.0.0.1", 0)
+    return pki.make_node("node-1")
 
 
 @pytest.fixture
 def client_node(pki):
-    return pki.make_node("node-2", "127.0.0.1", 0)
+    return pki.make_node("node-2")
 
 
 @pytest.fixture
 def gateway_node(pki):
-    return pki.make_node("gateway", "127.0.0.1", 0)
+    return pki.make_node("gateway")
+
+
+@pytest.fixture
+def node3(pki):
+    return pki.make_node("node-3")
 
 
 _OK_DOC = 0x00
@@ -98,8 +108,8 @@ def encode_err(code: object, detail: object = "") -> bytes:
 
 @dataclass(frozen=True, slots=True)
 class Ok:
-    doc: Optional[dict] = None
-    raw: Optional[bytes] = None
+    doc: dict | None = None
+    raw: bytes | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,7 +167,7 @@ class Capability:
     expires_at: int
 
     @classmethod
-    def parse(cls, raw: bytes) -> "Capability":
+    def parse(cls, raw: bytes) -> Capability:
         leaf = cc.Token.decode(raw).leaf.body()
         scope = leaf["scope"]
         return cls(
@@ -171,10 +181,10 @@ class Capability:
             expires_at=int(leaf["exp"]),
         )
 
-    def remaining(self, now: Optional[int] = None) -> int:
+    def remaining(self, now: int | None = None) -> int:
         return self.expires_at - (now if now is not None else int(time.time()))
 
-    def expired(self, now: Optional[int] = None) -> bool:
+    def expired(self, now: int | None = None) -> bool:
         return self.remaining(now) <= 0
 
     def permits(self, tool: str) -> bool:
@@ -231,7 +241,7 @@ async def guarded(stream: Stream, *, where: str):
         )
     except ClockSkew as exc:
         await send_error(stream, "POP_STALE", str(exc))
-    except asyncio.TimeoutError:
+    except TimeoutError:
         await send_error(stream, "TIMEOUT", "")
     except Exception as exc:
         await send_error(stream, "INTERNAL", type(exc).__name__)
@@ -261,7 +271,7 @@ class ToolRegistry:
         *,
         cost: int | CostFn,
         handler: Handler,
-        settle: Optional[SettleFn] = None,
+        settle: SettleFn | None = None,
     ) -> None:
         key = f"{resource}:{action}"
         if key in self._tools:
@@ -289,7 +299,7 @@ class ScopeConfig(BaseModel):
     audience: list[str] = Field(min_length=1)
     budget_micros: int = Field(ge=0)
 
-    def to_scope(self) -> "cc.Scope":
+    def to_scope(self) -> cc.Scope:
         return cc.Scope(
             tools=frozenset(self.tools),
             budget_micros=self.budget_micros,
@@ -300,13 +310,13 @@ class ScopeConfig(BaseModel):
 
 class IssuerLimits(BaseModel):
     max_ttl_seconds: int = Field(gt=0, le=86400, default=10)
-    max_delegation_depth: int = Field(ge=0, le=15, default=1)
+    max_delegation_depth: int = Field(ge=0, le=15, default=2)
     allowed_models: list[Literal["key_bound", "peer_bound"]]
     max_scope: ScopeConfig
 
 
 @dataclass
-class ServerHandle:
+class Governer:
     node: NodeSpec
     clock: Clock
     governor_key: cc.CapChainKey  # signs tokens
@@ -463,7 +473,6 @@ class ServerHandle:
             if not doc["resource"] or not scope.allows_tool(doc["resource"]):
                 await send_error(stream, "NO_SCOPE", doc["resource"])
                 return
-            # Bootstrap/limits check
 
             if requested_ttl > self.issuer.max_ttl_seconds:
                 await send_error(stream, "TTL_TOO_LONG", "")
@@ -491,7 +500,6 @@ class ServerHandle:
             )
             try:
                 ttl_seconds = 3600
-                max_depth: int = 1
 
                 token_bytes = cc.mint(
                     root_key=self.governor_key,  # type: ignore
@@ -505,7 +513,7 @@ class ServerHandle:
                     scope=scope,
                     ttl_seconds=ttl_seconds,
                     now=self.clock.now_seconds(),
-                    max_depth=max_depth,
+                    max_depth=self.issuer.max_delegation_depth,
                 ).encode()
 
             except cc.RejectError as exc:
@@ -521,9 +529,9 @@ class ClientHandle:
     key: cc.CapChainKey
     binding: bytes
     transport: Transport
-    active_stream: Optional[Stream] = None
-    receipt: Optional[str] = None  # base64 string
-    valid_until: Optional[int] = None
+    active_stream: Stream | None = None
+    receipt: str | None = None  # base64 string
+    valid_until: int | None = None
 
     @classmethod
     def new(cls, node, clock, binding, transport):
@@ -649,9 +657,9 @@ class ClientHandle:
         resource: str,
         action: str,
         body: bytes,
-        verifier_id: Optional[str] = None,
-        session_id: Optional[str] = None,
-        task: Optional[str] = None,
+        verifier_id: str | None = None,
+        session_id: str | None = None,
+        task: str | None = None,
         timeout: float = 10.0,
     ) -> bytes:
         # 1. Client-side preflight (fails fast without a round-trip)
@@ -734,7 +742,7 @@ class ClientHandle:
 
 
 class Client:
-    def __init__(self, node: NodeSpec, cfg: Optional[TransportConfig] = None) -> None:
+    def __init__(self, node: NodeSpec, cfg: TransportConfig | None = None) -> None:
         self.clock: Clock = SystemClock()
         self.node: NodeSpec = node
         self.key: cc.CapChainKey = cc.CapChainKey.generate(agent_id=self.node.spiffe_id)
@@ -749,7 +757,7 @@ class Client:
         return self.node.name
 
     @asynccontextmanager
-    async def handler(self, port: int, target: str, cfg: Optional[TransportConfig] = None):
+    async def handler(self, port: int, target: str, cfg: TransportConfig | None = None):
         cfg = cfg or self.cfg
         r, w = await asyncio.open_connection(
             self.node.host,
@@ -801,7 +809,7 @@ class Broker:
 
     transport_config: TransportConfig = field(default_factory=TransportConfig)
     port: int = 0
-    _server: Optional[asyncio.AbstractServer] = None
+    _server: asyncio.AbstractServer | None = None
 
     _tasks: list[asyncio.Task] = field(default_factory=list)
     _transports: list[Transport] = field(default_factory=list)
@@ -831,7 +839,7 @@ class Broker:
             self._server.close()
             try:
                 await asyncio.wait_for(self._server.wait_closed(), 5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
         for tr in self._transports:
             if not tr.closed:
@@ -906,7 +914,7 @@ class Broker:
         if not token:
             await send_error(stream, "BAD_REQUEST", "missing token")
             return
-        pop: Optional[bytes] = stream.open_pop or None
+        pop: bytes | None = stream.open_pop or None
 
         req = decode(stream.open_payload)
         if not isinstance(req, Ok) or req.doc is None:
@@ -960,8 +968,8 @@ async def transport_pair(
     server_node: NodeSpec,
     client_node: NodeSpec,
     gateway_node: NodeSpec,
-    server_cfg: Optional[TransportConfig] = None,
-    client_cfg: Optional[TransportConfig] = None,
+    server_cfg: TransportConfig | None = None,
+    client_cfg: TransportConfig | None = None,
 ):
     server_cfg = server_cfg or TransportConfig()
     client_cfg = client_cfg or TransportConfig()
@@ -1019,7 +1027,8 @@ async def transport_pair(
         entitlements=entitlements,
         node=gateway_node,
     )
-    server_handler = ServerHandle(
+
+    server_handler = Governer(
         node=server_node,
         clock=SystemClock(),
         governor_key=governor_key,
@@ -1085,7 +1094,7 @@ async def transport_pair(
         await server_handler.close()
         try:
             await asyncio.wait_for(server.wait_closed(), 5.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
 
@@ -1461,10 +1470,10 @@ async def test_14_expired_leaf_blocks_transport(tmp_path):
     regression in either alone leaves a hole."""
     import ssl
 
-    pki = PKI(tmp_path, ["node-1", "node-2", "gateway"], "aegis-test")
-    server_node = pki.make_node("node-1", "127.0.0.1", 0, agent_not_after_seconds=-30)
-    client_node = pki.make_node("node-2", "127.0.0.1", 0)
-    gateway_node = pki.make_node("gateway", "127.0.0.1", 0)
+    pki = PKI(tmp_path, endpoints, "aegis-test")
+    server_node = pki.make_node("node-1", agent_not_after_seconds=-30)
+    client_node = pki.make_node("node-2")
+    gateway_node = pki.make_node("gateway")
 
     cfg = TransportConfig(stream_window=4 * 1024)
     async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
@@ -1502,13 +1511,13 @@ async def test_13_expired_ca_blocks_transport(tmp_path):
 
     pki = PKI(
         tmp_path,
-        ["node-1", "node-2", "gateway"],
+        endpoints,
         "aegis-test",
         ca_not_after_seconds_from_now=-60,  # CA expired one minute ago
     )
-    server_node = pki.make_node("node-1", "127.0.0.1", 0)
-    client_node = pki.make_node("node-2", "127.0.0.1", 0)
-    gateway_node = pki.make_node("gateway", "127.0.0.1", 0)
+    server_node = pki.make_node("node-1")
+    client_node = pki.make_node("node-2")
+    gateway_node = pki.make_node("gateway")
 
     cfg = TransportConfig(stream_window=4 * 1024)
     async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
@@ -1736,7 +1745,9 @@ async def stolen_governor_key_plus_agent_identity(server_node, client_node, gate
         assert b'"balance": 42' in result
 
 
-async def test_20_stolen_governor_key_attacker_cnf_rejected(server_node, client_node, gateway_node):
+async def test_20_stolen_governor_key_attacker_cnf_rejected_v2(
+    server_node, client_node, gateway_node
+):
     cfg = TransportConfig(stream_window=4 * 1024)
     async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
         # Attacker enrolls legitimately (they own client_node identity, so
@@ -1815,7 +1826,7 @@ async def stolen_governor_key_alone_rejected(server_node, client_node, gateway_n
 
 
 def _forge(
-    server: ServerHandle,
+    server: Governer,
     *,
     holder: str,
     cnf: str,
@@ -1848,7 +1859,7 @@ def _forge(
         issuer=server.spiffe_id,
         holder=holder,
         cnf=cnf,
-        session_id=session,  # ← was EXPECTED_SESSION hardcoded
+        session_id=session,
         task=EXPECTED_TASK,
         scope=cc.Scope(
             tools=frozenset(tools),

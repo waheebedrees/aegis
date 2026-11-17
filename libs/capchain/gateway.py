@@ -9,7 +9,7 @@ import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import TypeVar
+from typing import TypeVar, cast
 
 import libs.capchain.capchain as cc
 from libs.capchain.checkpoint import (
@@ -295,7 +295,7 @@ class Permit:
             result = await fn()
         elif callable(fn):
             if inspect.iscoroutinefunction(getattr(fn, "__call__", None)):
-                result = await fn()
+                result = await cast(Awaitable[T], fn())
             else:
                 result = await asyncio.to_thread(fn)
                 if inspect.iscoroutine(result):

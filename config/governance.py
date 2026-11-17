@@ -72,29 +72,25 @@ Relative paths resolve against the config file's directory
 """
 
 from __future__ import annotations
-import base64
-import os
+
 import asyncio
-import hmac
-import json
-import logging
-import time
-from pathlib import Path
-from typing import Callable, Generic, TypeVar
-
-
-from dataclasses import dataclass, field
-from typing import Iterable
-import math
-import libs.capchain.capchain as cc
+import base64
 import hashlib
 import hmac
 import json
-from typing import Any, Iterable, Mapping
+import logging
+import math
+import os
 import re
+import time
 import tomllib
-from config._schema import ConfigError, epoch, integer, spiffe, table, tables, text, texts, number
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Generic, TypeVar
 
+import libs.capchain.capchain as cc
+from config._schema import ConfigError, epoch, integer, number, spiffe, table, tables, text, texts
 
 KEY_BYTES = 32
 SEED_BYTES = 32

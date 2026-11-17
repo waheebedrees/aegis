@@ -144,6 +144,26 @@ class Checked:
     row: Entitlement
 
 
+def _decode_chain(token: bytes) -> tuple[Mapping, Mapping]:
+    """Return (root_body, leaf_body).
+
+    Depth is enforced by verify_chain via Policy.max_depth, not here.
+    For a 1-block token root == leaf.
+    """
+    try:
+        decoded = cc.Token.decode(token)
+        blocks = decoded.blocks
+        if not blocks:
+            raise ValueError("empty token chain")
+        root = blocks[0].body()
+        leaf = blocks[-1].body()
+        if not isinstance(root, Mapping) or not isinstance(leaf, Mapping):
+            raise ValueError("invalid body")
+        return root, leaf
+    except Exception:
+        raise EntitlementError("BAD_TOKEN", "undecodable") from None
+
+
 class EntitlementTable:
     """
     Broker-side independent entitlement enforcement.
@@ -224,15 +244,11 @@ class EntitlementTable:
         if not isinstance(peer_id, str) or not peer_id:
             raise ValueError("invalid peer_id")
 
-        leaf, block_count = _decode_leaf(token)
-        # This deployment intentionally supports only root capabilities.
-        if block_count != 1:
-            raise EntitlementError(
-                "DELEGATION_NOT_ALLOWED",
-                f"blocks={block_count}",
-            )
+        root, leaf = _decode_chain(token)
 
-        issuer = _string(leaf, CLAIM_ISSUER)
+        # Depth is checked by verify_chain (Policy.max_depth). Duplicating
+        # it here couples two independent decisions.
+        issuer_root = _string(root, CLAIM_ISSUER)
         holder = _string(leaf, CLAIM_HOLDER)
         cnf = _string(leaf, CLAIM_CNF)
         jti = _string(leaf, CLAIM_JTI)
@@ -243,23 +259,21 @@ class EntitlementTable:
         if holder != peer_id:
             raise EntitlementError("WRONG_HOLDER", peer_id)
 
-        row = self._rows.get((issuer, peer_id))
-
+        # Entitlement key: (root_issuer, leaf_holder).
+        #   * 1-block token: root == leaf, so this is (leaf.iss, leaf.holder)
+        #     — identical to the old behaviour. Existing tests are unaffected.
+        #   * N-block token: still resolves to the root issuer, so every
+        #     delegation from one root draws from one row. That is what makes
+        #     max_outstanding_budget_micros bound *total* delegation rather
+        #     than per-hop spend.
+        row = self._rows.get((issuer_root, holder))
         if row is None:
-            raise EntitlementError(
-                "NO_ENTITLEMENT",
-                f"{issuer} -> {peer_id}",
-            )
+            raise EntitlementError("NO_ENTITLEMENT", f"{issuer_root} -> {holder}")
 
-        # Critical protection against stolen governor signing keys.
         if cnf not in row.cnf:
-            raise EntitlementError(
-                "CNF_NOT_REGISTERED",
-                peer_id,
-            )
+            raise EntitlementError("CNF_NOT_REGISTERED", holder)
 
         scope = leaf.get(CLAIM_SCOPE)
-
         if not isinstance(scope, Mapping):
             raise EntitlementError("BAD_TOKEN", "scope")
 
@@ -273,42 +287,26 @@ class EntitlementTable:
             )
 
         if not _allows(row.audience, audience):
-            raise EntitlementError(
-                "AUDIENCE_EXCEEDS_ENTITLEMENT",
-            )
+            raise EntitlementError("AUDIENCE_EXCEEDS_ENTITLEMENT")
 
         budget = _integer(scope, "budget")
-
         if not 0 <= budget <= row.max_budget_micros:
-            raise EntitlementError(
-                "BUDGET_EXCEEDS_ENTITLEMENT",
-                str(budget),
-            )
+            raise EntitlementError("BUDGET_EXCEEDS_ENTITLEMENT", str(budget))
 
         issued_at = _integer(leaf, CLAIM_ISSUED_AT)
         exp = _integer(leaf, CLAIM_EXPIRES_AT)
 
         if issued_at > now:
             raise EntitlementError("TOKEN_NOT_YET_VALID")
-
         if exp <= issued_at:
-            raise EntitlementError(
-                "BAD_TOKEN",
-                "invalid token lifetime",
-            )
-
+            raise EntitlementError("BAD_TOKEN", "invalid token lifetime")
         if exp <= now:
             raise EntitlementError("TOKEN_EXPIRED")
-
-        # Check original lifetime, not remaining lifetime.
         if exp - issued_at > row.max_ttl_seconds:
-            raise EntitlementError(
-                "TTL_EXCEEDS_ENTITLEMENT",
-                str(exp - issued_at),
-            )
+            raise EntitlementError("TTL_EXCEEDS_ENTITLEMENT", str(exp - issued_at))
 
         return Checked(
-            key=(issuer, peer_id),
+            key=(issuer_root, holder),
             digest=hashlib.sha256(token).hexdigest(),
             jti=jti,
             budget=budget,

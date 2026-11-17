@@ -882,7 +882,7 @@ def self_tests():
         try:
             try:
                 native_exporter(tls)
-                assert False, "expected HANDSHAKE_INCOMPLETE"
+                raise AssertionError("expected HANDSHAKE_INCOMPLETE")
             except ChannelBindingError as e:
                 assert e.code == "HANDSHAKE_INCOMPLETE", (
                     f"expected HANDSHAKE_INCOMPLETE, got {e.code}"
@@ -894,14 +894,14 @@ def self_tests():
         """RFC 5705 §4: the label must not contain NUL bytes."""
         try:
             native_exporter(None, label=b"bad\x00label")  # type: ignore[arg-type]
-            assert False, "expected BAD_LABEL"
+            raise AssertionError("expected BAD_LABEL")
         except ChannelBindingError as e:
             assert e.code == "BAD_LABEL", e.code
 
     def test_label_rejects_non_ascii():
         try:
             native_exporter(None, label="café")  # type: ignore[arg-type]
-            assert False, "expected BAD_ARGUMENT"
+            raise AssertionError("expected BAD_ARGUMENT")
         except ChannelBindingError as e:
             assert e.code == "BAD_ARGUMENT", e.code
 
@@ -1032,7 +1032,7 @@ def self_tests():
         srv.close()
 
         assert len(server_cbs) == 2, f"server saw {len(server_cbs)} connections"
-        for i, (cb_cli, cb_srv) in enumerate(zip(client_outputs, server_cbs)):
+        for i, (cb_cli, cb_srv) in enumerate(zip(client_outputs, server_cbs, strict=False)):
             assert cb_cli == cb_srv, (
                 f"process boundary broke CB agreement on connection {i}:\n"
                 f"  client: {cb_cli.hex()}\n"

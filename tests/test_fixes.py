@@ -1,18 +1,12 @@
 import asyncio
-import inspect
-import sys
-
-import libs.capchain.gateway as gw
-import libs.capchain.capchain as cc
-from libs.capchain.checkpoint import (
-    InMemoryReplayStore,
-    InMemoryBudgetLedger,
-    InMemoryRevocationStore,
-    InMemoryEvidenceLog,
-)
-
 
 import pytest
+
+import libs.capchain.capchain as cc
+import libs.capchain.gateway as gw
+from libs.capchain.checkpoint import (
+    InMemoryReplayStore,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -38,9 +32,6 @@ async def test_fixes():
     assert cfg1.replay is not cfg2.replay, "ReplayStores should be distinct instances"
     assert cfg1.revocation is not cfg2.revocation, "RevocationStores should be distinct instances"
     assert cfg1.evidence is not cfg2.evidence, "EvidenceLogs should be distinct instances"
-    print(
-        "[PASS] GatewayConfig instances receive separate default store instances via field(default_factory=...)!"
-    )
 
     print("\n=== Testing Fix 3: Permit.execute async inspection ===")
 

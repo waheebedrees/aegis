@@ -1838,9 +1838,10 @@ def make_delegate(
     audience: list[str],
     ttl_seconds: int,
     domains: tuple[str, ...] = (),
-    now=int(time.time()),
+    now=None,
 ) -> bytes:
     """Attenuate `parent_token` for a downstream node (e.g. Task Loop -> LLM/DB)."""
+    now = now or int(time.time())
     scope = make_scope(
         tools=tools,
         budget_micros=budget_micros,

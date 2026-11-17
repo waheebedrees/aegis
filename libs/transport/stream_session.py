@@ -30,11 +30,17 @@ import secrets
 import struct
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from libs.transport.frame import (
+    _U16,
+    DATA_MAX_BODY,
+    DATA_MAX_POP,
+    DATA_MAX_TOKEN,
     FIXED_OVERHEAD,
+    HELLO_MAX_BODY,
     MAX_CHUNK_BYTES,
     MAX_FRAME_BYTES,
     MAX_SEQ,
@@ -52,6 +58,7 @@ from libs.transport.frame import (
     StreamClosed,
     make_cancel,
     make_close,
+    make_data,
     make_open_stream,
     make_ping,
     make_pong,
@@ -92,6 +99,8 @@ PER_STREAM_OVERHEAD = OPEN_MAX_TOKEN + OPEN_MAX_POP + OPEN_MAX_BODY
 MAX_STREAM_OVERHEAD = 4 * 1024 * 1024  # per side, retained OPEN metadata
 
 HANDSHAKE_MAX_PAYLOAD = FIXED_OVERHEAD + 64
+HANDSHAKE_MAX_PAYLOAD = FIXED_OVERHEAD + HELLO_MAX_BODY
+
 CLOSE_WRITE_TIMEOUT = 1.0
 SHUTDOWN_GRACE = 0.5
 MAX_OUTSTANDING_PINGS = 3
@@ -315,8 +324,6 @@ class Stream:
         self._reset: str | None = None
         self._touched = time.monotonic()
 
-    # read-only views
-
     @property
     def sid(self) -> int:
         return self._sid
@@ -358,8 +365,8 @@ class Stream:
         return self._peer_window
 
     @property
-    def binding(self):
-        return self._t.peer_id
+    def opened_at(self) -> float:
+        return self._touched
 
     @property
     def max_chunk(self) -> int:
@@ -373,10 +380,14 @@ class Stream:
             ),
         )
 
+    @property
+    def open_body(self) -> bytes:
+        """Signed-and-MAC-protected OPEN body, for PoP binding."""
+        return self._open_body
+
     def __repr__(self) -> str:
         return f"<Stream sid={self._sid} kind={self._kind!r} reset={self._reset!r}>"
 
-    # send
     async def send(self, data: bytes, *, fin: bool = False, timeout: float | None = None) -> None:
         if type(data) is not bytes:
             raise StreamError("BAD_DATA", type(data).__name__)
@@ -427,7 +438,17 @@ class Stream:
                 self._send_fin = True
             self._touched = time.monotonic()
 
-            if not await self._t._write(frame):
+            try:
+                written = await self._t._write(frame)
+            except asyncio.CancelledError:
+                # We have already committed seq/sent/fin. If the write is
+                # cancelled here, the session's per-stream sequence can no
+                # longer be trusted — the peer may or may not have seen
+                # seq `seq`. Fail closed: this transport will never carry
+                # another frame.
+                self._t._request_stop("local:cancelled_during_write", notify=False)
+                raise
+            if not written:
                 raise StreamError("CONN_CLOSED", self._t.close_reason or "")
             self._t._retire_if_done(self)
 
@@ -446,8 +467,6 @@ class Stream:
             raise StreamError("SEND_CLOSED")
         if self._t._stopping:
             raise StreamError("CONN_CLOSED", self._t.close_reason or "")
-
-    # receive
 
     async def recv(self, *, timeout: float | None = None) -> bytes | None:
         """Next verified chunk. b"" is a zero-length FIN chunk; None means the
@@ -523,8 +542,6 @@ class Stream:
             if chunk:
                 parts.append(chunk)
 
-    # lifecycle
-
     def cancel(self, reason: str = "cancelled") -> None:
         self._t._reset_stream(self, f"local:{_safe(reason, 64)}", notify=True)
 
@@ -589,6 +606,9 @@ class Transport:
         "_reader",
         "_workers",
         "_supervisor",
+        "_data_handlers",  # kind -> Callable[[Frame], None]
+        "_session_out",  # deque[Frame], drained by _control_loop
+        "_data_bucket",  # [tokens, last_monotoni
     )
 
     def __init__(self, tls: TlsConnection, config: TransportConfig, *, is_client: bool) -> None:
@@ -643,7 +663,13 @@ class Transport:
         self._workers: list[asyncio.Task] = []
         self._supervisor: asyncio.Task | None = None
 
-    # public API
+        # Session-DATA: bounded rate + bounded outbound queue.
+        self._data_handlers: dict[str, Callable[[Frame], None]] = {}
+        self._session_out: deque[Frame] = deque(maxlen=64)
+        self._data_bucket: list[float] = [200.0, time.monotonic()]  # burst 200, 100/s
+
+        self._ctl_ev = asyncio.Event()
+
     @classmethod
     async def establish(
         cls, tls: TlsConnection, config: TransportConfig, *, is_client: bool
@@ -740,7 +766,15 @@ class Transport:
         self._streams[sid] = st
         self._max_sid = max(self._max_sid, sid)
 
-        if not await self._write(frame):
+        try:
+            written = await self._write(frame)
+        except asyncio.CancelledError:
+            # _next_sid is committed and st is registered. The peer never
+            # sees OPEN_STREAM. Same reasoning as Stream.send(): kill the
+            # session rather than leave seq/id state ambiguous.
+            self._request_stop("local:cancelled_during_open", notify=False)
+            raise
+        if not written:
             self._reset_stream(st, "conn_closed", notify=False)
             raise StreamError("CONN_CLOSED", self.close_reason or "")
         return st
@@ -780,6 +814,60 @@ class Transport:
 
     async def wait_closed(self) -> None:
         await self._closed.wait()
+
+    def set_data_handler(self, kind: str, handler: Callable[[Frame], None]) -> None:
+        """Register a synchronous handler for inbound session-DATA frames of
+        this kind. Handlers must not await; dispatch is synchronous inside the
+        reader loop, so a handler that blocks stalls the whole connection.
+        For async work, push `frame` onto an asyncio.Queue and return.
+        Unknown kinds are silently dropped (bounded rate, see _on_session_data).
+        """
+        if not isinstance(kind, str) or not (1 <= len(kind) <= 64) or not kind.isascii():
+            raise ValueError("kind must be 1..64 ASCII chars")
+        if not callable(handler):
+            raise TypeError("handler must be callable")
+        self._data_handlers[kind] = handler
+
+    def remove_data_handler(self, kind: str) -> None:
+        self._data_handlers.pop(kind, None)
+
+    def send_session_data(
+        self,
+        kind: str,
+        *,
+        body: bytes = b"",
+        token: bytes = b"",
+        pop: bytes = b"",
+    ) -> None:
+        """Enqueue one session DATA frame. Non-blocking: dropped (returns
+        silently) if the peer is gone, the queue is full, or the kind is
+        malformed. Ordering with PONG/CANCEL/WINDOW_UPDATE is preserved because
+        _control_loop drains `_session_out` interleaved with the other queues.
+        """
+        if self._stopping:
+            return
+        if not isinstance(kind, str) or not (1 <= len(kind) <= 64) or not kind.isascii():
+            raise ValueError("kind must be 1..64 ASCII chars")
+        if not isinstance(body, (bytes, bytearray)) or len(body) > DATA_MAX_BODY - 66:
+            raise ValueError("body too large")
+        if not isinstance(token, (bytes, bytearray)) or len(token) > DATA_MAX_TOKEN:
+            raise ValueError("token too large")
+        if not isinstance(pop, (bytes, bytearray)) or len(pop) > DATA_MAX_POP:
+            raise ValueError("pop too large")
+
+        kb = kind.encode("ascii")
+        frame = make_data(
+            token=bytes(token),
+            pop=bytes(pop),
+            body=struct.pack(">H", len(kb)) + kb + bytes(body),
+            stream_id=0,
+        )
+        try:
+            self._session_out.append(frame)
+        except Exception:
+            # deque(maxlen) never raises; keep the guard for future-proofing.
+            return
+        self._ctl_ev.set()
 
     @property
     def peer_id(self) -> str:
@@ -926,6 +1014,12 @@ class Transport:
                     n = min(n, MAX_WINDOW_CREDIT)
                     if not await self._write(make_window_update(stream_id=sid, credits=n)):
                         return
+
+                while self._session_out and not self._stopping:
+                    frame = self._session_out.popleft()
+                    if not await self._write(frame):
+                        return
+
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -939,8 +1033,6 @@ class Transport:
             self._stopping = True
             self._stop_code = self._stop_code or "supervisor_cancelled"
         await self._shutdown(self._stop_code or "stopped", notify=self._stop_notify)
-
-    # inbound dispatch (synchronous: no reordering window)
 
     def _on_frame(self, f: Frame) -> None:
         t = f.type
@@ -963,6 +1055,8 @@ class Transport:
             self._on_error(f)
         elif t == FrameType.SESSION_INIT:
             raise TransportError("DUPLICATE_HELLO")
+        elif t == FrameType.DATA:
+            self._on_session_data(f)
         else:
             # Unreachable: the registry is closed and every registered type is
             # handled above. Kept as a fail-closed backstop.
@@ -1101,7 +1195,44 @@ class Transport:
         )
         raise TransportError("PEER_ERROR", notify=False)
 
-    # state helpers
+    def _on_session_data(self, f: Frame) -> None:
+        # Session-scoped by construction; the FrameSpec already rejects
+        # nonzero stream_id, but re-check cheaply because this is the only
+        # frame type whose dispatch depends on it.
+        if f.stream_id != 0:
+            raise TransportError("BAD_STREAM_ID", "DATA requires stream_id == 0")
+
+        # Token bucket: independent of the byte-level stream window, so a
+        # peer cannot use DATA to bypass backpressure. 200/s sustained,
+        # 200 burst. Falling below zero is a peer bug — fail closed.
+        now = time.monotonic()
+        tokens = self._data_bucket[0] + (now - self._data_bucket[1]) * 100.0
+        self._data_bucket[0] = min(200.0, tokens) - 1.0
+        self._data_bucket[1] = now
+        if self._data_bucket[0] < 0.0:
+            raise TransportError("DATA_FLOOD", notify=False)
+
+        body = f.body
+        if len(body) < 3:
+            raise TransportError("BAD_DATA", "short")
+        (kind_len,) = _U16.unpack_from(body, 0)
+        if not 1 <= kind_len <= 64 or 2 + kind_len > len(body):
+            raise TransportError("BAD_DATA", "bad kind length")
+        try:
+            kind = body[2 : 2 + kind_len].decode("ascii")
+        except UnicodeDecodeError:
+            raise TransportError("BAD_DATA", "non-ascii kind") from None
+
+        handler = self._data_handlers.get(kind)
+        if handler is None:
+            # Unknown kinds are silently ignored: L5 upgrades must not
+            # require transport-level agreement. Rate limit already applied.
+            return
+        try:
+            handler(f)
+        except Exception:
+            log.exception("DATA handler crashed kind=%s", _safe(kind, 64))
+            # Handler bugs are L5 bugs; do not kill the transport.
 
     def _grant(self, st: Stream, n: int) -> None:
         if n <= 0 or st._reset is not None or self._stopping:
@@ -1171,8 +1302,6 @@ class Transport:
             self._request_stop(f"write:{outcome.reason}", notify=False)
             return False
         return True
-
-    # teardown
 
     async def _shutdown(self, code: str, *, notify: bool) -> None:
         if self._down:

@@ -25,15 +25,11 @@ import threading
 import urllib.parse
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import (
-    Any,
-    Union,
-)
-
-from cryptography import x509
+from typing import Any
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import dsa, ec, ed25519, rsa
 from cryptography.hazmat.primitives.serialization import load_der_private_key
+from cryptography import x509
 
 __all__ = [
     "IdentityError",
@@ -52,19 +48,13 @@ __all__ = [
 ]
 
 log = logging.getLogger("aegis.identity")
+
+
 ALPN = "aegis/v1"
 
+PrivateKeyTypes = ec.EllipticCurvePrivateKey | ed25519.Ed25519PrivateKey | rsa.RSAPrivateKey
+PublicKeyTypes = ec.EllipticCurvePublicKey | ed25519.Ed25519PublicKey | rsa.RSAPublicKey
 
-PrivateKeyTypes = Union[
-    ec.EllipticCurvePrivateKey,
-    ed25519.Ed25519PrivateKey,
-    rsa.RSAPrivateKey,
-]
-PublicKeyTypes = Union[
-    ec.EllipticCurvePublicKey,
-    ed25519.Ed25519PublicKey,
-    rsa.RSAPublicKey,
-]
 
 
 class IdentityError(Exception):
