@@ -1,15 +1,4 @@
-"""gov.py — Aegis governance CLI.
-
-Invoke as:
-    python -m gov <subcommand> [flags]
-or:
-    python gov.py <subcommand> [flags]
-or (installed):
-    aegis <subcommand> [flags]
-
-═══════════════════════════════════════════════════════════════════════════
-QUICK START — bootstrap a fresh cluster
-═══════════════════════════════════════════════════════════════════════════
+"""
 
 1. Generate all keys (one-shot):
 
@@ -21,11 +10,8 @@ QUICK START — bootstrap a fresh cluster
        keys/enrollment.{pub,seed}    signs enrollment receipts
        keys/node-2.{pub,seed}        agent workload key
 
-2. Generate TLS material with SPIFFE URI SANs:
 
-       python pki.py --out certs --force
-
-3. Create governance.toml and populate it:
+2. Create governance.toml and populate it:
 
        aegis init \\
            --issuer-key     keys/issuer.pub \\
@@ -50,12 +36,12 @@ QUICK START — bootstrap a fresh cluster
                                   --scope-budget 1000000 \\
                                   --scope-audience spiffe://aegis-test/gateway
 
-4. Validate and sign:
+3. Validate and sign:
 
        aegis validate
        aegis sign --key keys/authority.seed --out config/governance.bundle
 
-5. Generate node configs (one per node):
+4. Generate node configs (one per node):
 
        aegis gen-node --name issuer --role issuer \\
            --spiffe-id spiffe://aegis-test/node-1 \\
@@ -91,7 +77,6 @@ DAY-2 WORKFLOW — after the cluster is running
     Add a new node:
 
        aegis gen-keys --dir keys --agents node-3
-       python pki.py --out certs                      # include node-3
        aegis add-edge     --parent ... --child spiffe://aegis-test/node-3 ...
        aegis add-issuance --holder spiffe://aegis-test/node-3 ...
        # bump version, sign, gen-node --name node-3 --role agent
