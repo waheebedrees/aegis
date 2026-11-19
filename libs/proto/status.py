@@ -23,6 +23,8 @@ __all__ = [
     "map_stream_error",
 ]
 
+_MAX_WIRE = 0xFFFF
+
 
 class Status(IntEnum):
     OK = 0
@@ -68,6 +70,17 @@ IDEMPOTENT_ONLY_RETRY = frozenset({Status.INTERNAL, Status.DATA_LOSS})
 
 def _printable(text: object, limit: int = 256) -> str:
     return "".join(c if 0x20 <= ord(c) <= 0x7E else "_" for c in str(text)[:limit])
+
+
+def status_from_wire(code: int) -> tuple[Status, int]:
+    """Map a u16 from the wire. Unknown non-zero codes degrade to INTERNAL;
+    the raw value is returned so it can be surfaced, never lost."""
+    if type(code) is not int or not 0 <= code <= _MAX_WIRE:
+        raise ValueError("status code out of range")
+    try:
+        return Status(code), code
+    except ValueError:
+        return Status.INTERNAL, code
 
 
 class ChannelError(Exception):

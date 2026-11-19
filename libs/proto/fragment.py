@@ -39,6 +39,7 @@ HARD_MAX_MESSAGE_BYTES = 64 * 1024 * 1024
 DEFAULT_MAX_FRAGMENTS = 1024
 
 
+
 @dataclass(frozen=True, slots=True)
 class Message:
     data: bytes

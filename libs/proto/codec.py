@@ -17,7 +17,11 @@ from typing import Any, Protocol, runtime_checkable
 
 from libs.proto.status import ProtocolError, Status
 
+
 __all__ = [
+    "OCTET_STREAM", 
+    "JSON", 
+    "CBOR",
     "CodecLimits",
     "Codec",
     "RawCodec",
@@ -41,6 +45,10 @@ _NINT64_MIN = -(1 << 64)
 _MAX_HARD_BYTES = 16 * 1024 * 1024
 _MAX_HARD_DEPTH = 128
 _MAX_HARD_ITEMS = 1_000_000
+
+OCTET_STREAM = "application/octet-stream"
+JSON = "application/json"
+CBOR = "application/cbor"
 
 
 @dataclass(frozen=True, slots=True)

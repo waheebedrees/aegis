@@ -11,22 +11,23 @@ from libs.proto.channel import (
     accept_channel,
     open_channel,
 )
-from libs.proto.codec import DEFAULT_CODECS, Codec, JsonCodec, RawCodec
-from libs.proto.envelope import (
+from libs.proto.codec import DEFAULT_CODECS, Codec, JsonCodec, RawCodec, JSON, CBOR, OCTET_STREAM
+from libs.proto.hello import (
     HELLO_REGISTRY,
+    ChannelHello,
+    HelloTag,
+    Mode,
+    MAX_HELLO_BYTES,
+)
+from libs.proto.envelope import (
     MAX_ENVELOPE_BYTES,
     MAX_HDR_BYTES,
-    MAX_HELLO_BYTES,
     MESSAGE_REGISTRY,
     PREFIX_LEN,
-    ChannelHello,
     EndFrame,
     Envelope,
     HeaderTag,
-    HelloTag,
-    Mode,
     MsgFlag,
-    MsgType,
     decode_envelope,
     encode_envelope,
     make_end_headers,
@@ -48,13 +49,14 @@ from libs.proto.status import (
     malformed,
     map_stream_error,
 )
+from libs.proto.headers import HeaderRegistry, HeaderSpec
+
 from libs.proto.tlv import (
     TLV_CRITICAL,
-    HeaderRegistry,
-    HeaderSpec,
     TLVEntry,
     decode_tlvs,
     encode_tlvs,
+    MsgType,
     make_tlv,
 )
 
@@ -112,4 +114,5 @@ __all__ = [
     "ByteStream",
     "open_channel",
     "accept_channel",
+    "JSON", "CBOR", "OCTET_STREAM"
 ]

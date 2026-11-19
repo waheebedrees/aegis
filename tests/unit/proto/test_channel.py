@@ -6,7 +6,9 @@ import time
 import pytest
 
 from libs.proto import Channel, ChannelConfig, RawCodec, accept_channel, open_channel
-from libs.proto.envelope import ChannelHello, Mode, MsgType
+from libs.proto.channel import EOF
+from libs.proto.hello import  ChannelHello, Mode
+from libs.proto.envelope import MsgType
 from libs.proto.fragment import DEFAULT_MAX_FRAGMENTS
 from libs.proto.status import ProtocolError, RemoteError, Status
 
@@ -36,6 +38,7 @@ class FakeByteStream:
     @property
     def kind(self) -> str:
         return self._kind
+
 
     @property
     def open_payload(self) -> bytes:
@@ -69,18 +72,6 @@ class FakeByteStream:
         self._cancelled = True
         self.cancel_reason = reason
 
-
-class BytesCodec:
-    name = "bytes"
-    content_type = "application/octet-stream"
-
-    def encode(self, value, *, schema_id: str = "") -> bytes:
-        if not isinstance(value, bytes):
-            raise TypeError("BytesCodec needs bytes")
-        return value
-
-    def decode(self, data: bytes, *, schema_id: str = ""):
-        return data
 
 
 def make_pair(
@@ -221,18 +212,18 @@ class TestSendRecvBasics:
         ini, acc, _, _ = make_pair(Mode.UNARY)
         await ini.send(b"request", end=True)
         assert await acc.recv() == b"request"
-        assert await acc.recv() is None
+        assert await acc.recv() is EOF
         await acc.send(b"response", end=True)
         assert await ini.recv() == b"response"
-        assert await ini.recv() is None
+        assert await ini.recv() is EOF
 
     @pytest.mark.asyncio
     async def test_recv_after_remote_end_returns_none_repeatedly(self):
         ini, acc, _, _ = make_pair(Mode.UNARY)
         await ini.send(b"x", end=True)
         await acc.recv()
-        assert await acc.recv() is None
-        assert await acc.recv() is None  # idempotent
+        assert await acc.recv() is EOF
+        assert await acc.recv() is EOF  # idempotent
 
     @pytest.mark.asyncio
     async def test_send_after_local_end_raises(self):
@@ -313,7 +304,7 @@ class TestEndSemantics:
         assert ini._send_count == 1
         assert ini._local_ended
         assert await acc.recv() == b"only"
-        assert await acc.recv() is None
+        assert await acc.recv() is EOF
 
     @pytest.mark.asyncio
     async def test_end_with_error_status_still_allowed(self):
@@ -352,7 +343,7 @@ class TestEndSemantics:
         with pytest.raises(RemoteError) as exc:
             await acc.recv()
         assert exc.value.status is Status.INTERNAL
-        assert await acc.recv() is None
+        assert await acc.recv() is EOF
 
         # ──────────────────────────────────────────────────────────────────────────
 
@@ -477,7 +468,7 @@ class TestOpenAccept:
         s_ini.attach(s_acc)
         hello = ChannelHello(mode=Mode.UNARY, method="M")
         s_acc.open_payload = hello.encode()
-        acc = await accept_channel(s_acc, BytesCodec())
+        acc = await accept_channel(s_acc, RawCodec())
         assert acc.role == "acceptor"
         assert acc.mode is Mode.UNARY
 
@@ -547,7 +538,7 @@ class TestStreamingRoundtrips:
         ini, acc, _, _ = make_pair(Mode.SERVER_STREAM)
         await ini.send(b"req", end=True)
         assert await acc.recv() == b"req"
-        assert await acc.recv() is None
+        assert await acc.recv() is EOF
         for i in range(5):
             await acc.send(f"part{i}".encode())
         await acc.end(Status.OK)
@@ -555,7 +546,7 @@ class TestStreamingRoundtrips:
         received = []
         while True:
             m = await ini.recv()
-            if m is None:
+            if m is EOF:
                 break
             received.append(m)
         assert received == [f"part{i}".encode() for i in range(5)]
@@ -570,14 +561,14 @@ class TestStreamingRoundtrips:
         received = []
         while True:
             m = await acc.recv()
-            if m is None:
+            if m is EOF:
                 break
             received.append(m)
         assert received == [f"part{i}".encode() for i in range(4)]
 
         await acc.send(b"done", end=True)
         assert await ini.recv() == b"done"
-        assert await ini.recv() is None
+        assert await ini.recv() is EOF
 
     @pytest.mark.asyncio
     async def test_bidi_echo(self):
@@ -586,7 +577,7 @@ class TestStreamingRoundtrips:
         async def echo():
             while True:
                 msg = await acc.recv()
-                if msg is None:
+                if msg is EOF:
                     break
                 await acc.send(msg)
             await acc.end(Status.OK)
@@ -598,7 +589,7 @@ class TestStreamingRoundtrips:
             assert await ini.recv() == f"m{i}".encode()
         await ini.end(Status.OK)
 
-        assert await ini.recv() is None
+        assert await ini.recv() is EOF
         await echo_task
 
 
