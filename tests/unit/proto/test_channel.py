@@ -12,7 +12,6 @@ from libs.proto.envelope import MsgType
 from libs.proto.fragment import DEFAULT_MAX_FRAGMENTS
 from libs.proto.status import ProtocolError, RemoteError, Status
 
-
 class FakeByteStream:
     """In-memory duplex byte stream. Pair two with attach() and they talk."""
 
