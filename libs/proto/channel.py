@@ -32,7 +32,6 @@ from libs.proto.fragment import (
     Fragmenter,
     Message,
     Reassembler,
-
 )
 from libs.proto.status import (
     ChannelError,
@@ -52,13 +51,16 @@ __all__ = [
     "accept_channel",
 ]
 
+
 class _EOF:
     __slots__ = ()
-    def __repr__(self) -> str: return "EOF"
+
+    def __repr__(self) -> str:
+        return "EOF"
+
 
 EOF: Any = _EOF()
 EOFType = _EOF
-
 
 
 @runtime_checkable
@@ -128,6 +130,7 @@ def _mode_limits(mode: Mode, role: str) -> tuple[int | None, int | None]:
 def _deadline_from(hello: ChannelHello) -> Optional[float]:
     return time.monotonic() + hello.deadline_ms / 1000.0 if hello.deadline_ms else None
 
+
 class Channel:
     """One channel. Thread-safe for concurrent send/recv across tasks."""
 
@@ -152,7 +155,7 @@ class Channel:
         "_recv_lock",
         "_send_schema",
         "_recv_schema",
-        "_peer_trailers"
+        "_peer_trailers",
     )
 
     def __init__(
@@ -195,7 +198,6 @@ class Channel:
         self._recv_lock = asyncio.Lock()
         self._peer_trailers: dict[int, bytes] = {}
 
-
     @property
     def peer_id(self) -> str:
         return self._stream.peer_id
@@ -231,6 +233,7 @@ class Channel:
     @property
     def recv_closed(self) -> bool:
         return self._remote_ended or self._terminal_error is not None
+
     @property
     def peer_trailers(self) -> dict[int, bytes]:
         """App-defined trailers from the peer's END. Empty after ERROR or before end."""
@@ -270,7 +273,6 @@ class Channel:
             pass
         raise error
 
-
     @classmethod
     async def open_channel(
         cls,
@@ -278,7 +280,8 @@ class Channel:
         kind: str,
         hello: ChannelHello,
         codec: Codec,
-        token: bytes = b"", pop: bytes = b"",
+        token: bytes = b"",
+        pop: bytes = b"",
         *,
         config: ChannelConfig | None = None,
         send_schema_id: str = "",
@@ -333,10 +336,15 @@ class Channel:
         if self._local_ended:
             raise ProtocolError(Status.FAILED_PRECONDITION, "send side closed")
         if self._send_limit == 0:
-            raise ProtocolError(Status.FAILED_PRECONDITION, f"send not allowed in {self._hello.mode.name}")
+            raise ProtocolError(
+                Status.FAILED_PRECONDITION,
+                f"send not allowed in {self._hello.mode.name}",
+            )
         if self._send_limit is not None and self._send_count >= self._send_limit:
-            raise ProtocolError(Status.FAILED_PRECONDITION,
-                                f"{self._hello.mode.name} allows {self._send_limit} send(s)")
+            raise ProtocolError(
+                Status.FAILED_PRECONDITION,
+                f"{self._hello.mode.name} allows {self._send_limit} send(s)",
+            )
 
         # Per-message SCHEMA_ID override: honour it for codec, strip from wire
         # headers (the codec already attached it via the schema_id arg, or the
@@ -368,8 +376,9 @@ class Channel:
                 self._abort(ProtocolError(Status.ABORTED, "send aborted"))
             self._send_count += 1
             if end:
-                await self._send_end_locked(Status.OK, "", detail=b"", trailers=None, timeout=timeout)
-                
+                await self._send_end_locked(
+                    Status.OK, "", detail=b"", trailers=None, timeout=timeout
+                )
 
     async def recv(self, *, timeout: float | None = None) -> Message:
         msg = await self.recv_message(timeout=timeout)
@@ -386,12 +395,12 @@ class Channel:
                     self._abort(ProtocolError(Status.MALFORMED, "bad SCHEMA_ID"))
                 break
         return self._codec.decode(msg.data, schema_id=schema)
-    
+
     async def recv_honour(self, *, timeout: float | None = None) -> Message:
         msg = await self.recv_message(timeout=timeout)
         if msg is None:
             return EOF
-        
+
         # Honour a peer-supplied SCHEMA_ID for this message.
         schema = self._recv_schema
         for h in msg.headers:
@@ -403,7 +412,7 @@ class Channel:
                 break
         value = self._codec.decode(msg.data, schema_id=schema)
         return Message(value, msg.headers)
-    
+
     async def recv_message(
         self,
         *,
@@ -418,19 +427,27 @@ class Channel:
             return await self._next(timeout)
 
     async def _next(self, user_timeout: float | None) -> Message | None:
+
         while True:
             if self._pending_terminal is not None:
                 tail = await self._stream.recv(timeout=self._eff_timeout(user_timeout))
                 if tail is not None:
                     self._abort(ProtocolError(Status.MALFORMED, "data after terminal envelope"))
-                status, message, retry, detail, trailers = self._pending_terminal   # ← include trailers
+                status, message, retry, detail, trailers = (
+                    self._pending_terminal
+                )  # ← include trailers
                 self._pending_terminal = None
                 self._remote_ended = True
                 self._peer_trailers = trailers
                 if status is not Status.OK:
-                    raise RemoteError(status, message, retry_after_ms=retry, error_detail=detail)
+                    raise RemoteError(
+                        status,
+                        message,
+                        retry_after_ms=retry,
+                        error_detail=detail,
+                    )
                 return None
-            
+
             raw = None
             effective = self._eff_timeout(user_timeout)
             try:
@@ -447,7 +464,7 @@ class Channel:
 
             if raw is None:
                 self._abort(ProtocolError(Status.MALFORMED, "transport FIN without END/ERROR"))
-                
+
             try:
                 env = decode_envelope(raw)
             except ProtocolError as exc:
@@ -480,19 +497,22 @@ class Channel:
                             Status.MALFORMED,
                             f"expected 1 message before END(OK), got {self._recv_count}",
                         )
-                )
+                    )
                 self._pending_terminal = (
-                    ef.status, 
-                    ef.message, 
-                    ef.retry_after_ms, 
-                    ef.detail, 
+                    ef.status,
+                    ef.message,
+                    ef.retry_after_ms,
+                    ef.detail,
                     dict(ef.trailers),
                 )
                 continue
             if env.type in (MsgType.CREDIT, MsgType.CONTROL):
                 continue
             self._abort(
-                ProtocolError(Status.MALFORMED, f"unexpected envelope type {env.type.name}")
+                ProtocolError(
+                    Status.MALFORMED,
+                    f"unexpected envelope type {env.type.name}",
+                )
             )
 
     async def end(
@@ -507,7 +527,11 @@ class Channel:
         self._check_live()
         async with self._send_lock:
             await self._send_end_locked(
-                status, message, detail=detail, trailers=trailers, timeout=timeout
+                status,
+                message,
+                detail=detail,
+                trailers=trailers,
+                timeout=timeout,
             )
 
     async def _send_end_locked(

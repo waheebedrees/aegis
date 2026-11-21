@@ -57,7 +57,10 @@ class ConfigError(Exception):
 
 
 def table(
-    value: Any, where: str, required: Iterable[str] = (), optional: Iterable[str] = ()
+    value: Any,
+    where: str,
+    required: Iterable[str] = (),
+    optional: Iterable[str] = (),
 ) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise ConfigError(f"{where}: expected a table")

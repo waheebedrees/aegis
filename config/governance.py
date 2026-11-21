@@ -90,7 +90,17 @@ from pathlib import Path
 from typing import Any, Generic, TypeVar
 
 import libs.capchain.capchain as cc
-from config._schema import ConfigError, epoch, integer, number, spiffe, table, tables, text, texts
+from config._schema import (
+    ConfigError,
+    epoch,
+    integer,
+    number,
+    spiffe,
+    table,
+    tables,
+    text,
+    texts,
+)
 
 KEY_BYTES = 32
 SEED_BYTES = 32
@@ -323,7 +333,10 @@ class Governance:
 
     def check_live(self, now: int) -> None:
         if now + CLOCK_SKEW < self.not_before:
-            raise cc.error(cc.Code.STATE_UNAVAILABLE, f"governance v{self.version} not yet valid")
+            raise cc.error(
+                cc.Code.STATE_UNAVAILABLE,
+                f"governance v{self.version} not yet valid",
+            )
         if now >= self.expires_at:
             raise cc.error(cc.Code.STATE_UNAVAILABLE, f"governance v{self.version} expired")
 
@@ -518,7 +531,10 @@ class GovernanceLoader:
                     remaining,
                 )
             elif prior is not None and signer_pk in prior.next_keys:
-                log.info("governance v%d accepted under a signed-forward rotation", gov.version)
+                log.info(
+                    "governance v%d accepted under a signed-forward rotation",
+                    gov.version,
+                )
             else:
                 raise ConfigError("bundle signer is not a trusted authority")
 
@@ -800,7 +816,10 @@ def _env(t: Mapping[str, Any], key: str, where: str) -> str | None:
 
 
 def _host_port(t: Mapping[str, Any], where: str) -> tuple[str, int]:
-    return (text(t["host"], f"{where}.host", 253), integer(t["port"], f"{where}.port", 1, 65535))
+    return (
+        text(t["host"], f"{where}.host", 253),
+        integer(t["port"], f"{where}.port", 1, 65535),
+    )
 
 
 def load_seed(source: str | bytes | Path) -> bytes:
@@ -949,7 +968,10 @@ def load_node_config(path: str | Path) -> NodeConfig:
         state_file=file_path(gt["state_file"], "governance.state_file", base, must_exist=False),
         authority_keys=keys,
         reload_interval=number(
-            gt.get("reload_interval_seconds", 30), "governance.reload_interval_seconds", 1, 3600
+            gt.get("reload_interval_seconds", 30),
+            "governance.reload_interval_seconds",
+            1,
+            3600,
         ),
         min_version=integer(gt.get("min_version", 1), "governance.min_version", lo=1),
         previous_authority_keys=prev_keys,
@@ -1055,7 +1077,12 @@ def compile_document(source: Mapping[str, Any]) -> dict:
         ("issuance", "enrollment"),
     )
     trust = table(s["trust"], "trust", ("roots",), ("enrollment",))
-    pol = table(s["policy"], "policy", ("max_depth", "edges"), ("models", "peer_bound_tools"))
+    pol = table(
+        s["policy"],
+        "policy",
+        ("max_depth", "edges"),
+        ("models", "peer_bound_tools"),
+    )
     pricing = table(s["pricing"], "pricing", ("rules",), ("default",))
 
     doc = {
@@ -1073,7 +1100,12 @@ def compile_document(source: Mapping[str, Any]) -> dict:
                 ),
             }
             for i, r in enumerate(
-                tables(trust["roots"], "trust.roots", ("issuer", "keys"), max_items=64)
+                tables(
+                    trust["roots"],
+                    "trust.roots",
+                    ("issuer", "keys"),
+                    max_items=64,
+                )
             )
         ],
         "policy": {
@@ -1144,7 +1176,11 @@ def compile_document(source: Mapping[str, Any]) -> dict:
         doc["enrollment_authority"] = _canonical_key_b64(trust["enrollment"], "trust.enrollment")
 
     if s.get("enrollment"):
-        t = table(s["enrollment"], "enrollment", ("may_enroll", "ttl", "model", "ceiling"))
+        t = table(
+            s["enrollment"],
+            "enrollment",
+            ("may_enroll", "ttl", "model", "ceiling"),
+        )
         doc["enrollment"] = {
             "may_enroll": t["may_enroll"],
             "ttl": t["ttl"],
@@ -1164,7 +1200,16 @@ def parse_document(doc: Mapping[str, Any], digest: str) -> Governance:
     d = table(
         doc,
         "bundle",
-        ("format", "version", "nbf", "exp", "roots", "policy", "issuance", "pricing"),
+        (
+            "format",
+            "version",
+            "nbf",
+            "exp",
+            "roots",
+            "policy",
+            "issuance",
+            "pricing",
+        ),
         ("enrollment_authority", "enrollment"),
     )
 
@@ -1205,7 +1250,11 @@ def parse_document(doc: Mapping[str, Any], digest: str) -> Governance:
         raise ConfigError(f"roots: {exc}") from None
 
     # delegation policy
-    p = table(d["policy"], "policy", ("max_depth", "models", "peer_bound_tools", "edges"))
+    p = table(
+        d["policy"],
+        "policy",
+        ("max_depth", "models", "peer_bound_tools", "edges"),
+    )
     raw_edges = tables(
         p["edges"],
         "policy.edges",
@@ -1251,7 +1300,11 @@ def parse_document(doc: Mapping[str, Any], digest: str) -> Governance:
     # issuance
     rules: list[IssuanceRule] = []
     for i, r in enumerate(
-        tables(d["issuance"], "issuance", ("holder", "ttl", "max_depth", "model", "scope"))
+        tables(
+            d["issuance"],
+            "issuance",
+            ("holder", "ttl", "max_depth", "model", "scope"),
+        )
     ):
         w = f"issuance[{i}]"
         rules.append(
@@ -1487,7 +1540,12 @@ def _open_bundle_full(
     allowed = {"format", "key", "sig", "body", "key_next", "sig_next"}
     if not isinstance(envelope, dict) or set(envelope) - allowed:
         raise ConfigError("bundle envelope has unknown fields")
-    table(envelope, "bundle envelope", ("format", "key", "sig", "body"), ("key_next", "sig_next"))
+    table(
+        envelope,
+        "bundle envelope",
+        ("format", "key", "sig", "body"),
+        ("key_next", "sig_next"),
+    )
     if envelope["format"] != BUNDLE_FORMAT:
         raise ConfigError(f"unsupported bundle format {envelope['format']!r}")
 
@@ -1510,7 +1568,12 @@ def _open_bundle_full(
 
     try:
         cc.verify_signature(
-            public_key, signature, CTX_GOVERNANCE, body, cc.Code.POLICY_DENIED, "governance bundle"
+            public_key,
+            signature,
+            CTX_GOVERNANCE,
+            body,
+            cc.Code.POLICY_DENIED,
+            "governance bundle",
         )
     except cc.RejectError:
         raise ConfigError("bundle signature is invalid") from None

@@ -60,7 +60,16 @@ EXPORTER_CONTEXT = b""  # RFC 9266: empty context, use_context=1
 EXPORTER_LENGTH = 32
 
 SUPPORTED_TLS_VERSIONS: frozenset[str] = frozenset({"TLSv1.3"})
-_FORBIDDEN_CIPHER_TOKENS = ("NULL", "ANON", "EXPORT", "RC4", "3DES", "DES", "MD5", "CBC")
+_FORBIDDEN_CIPHER_TOKENS = (
+    "NULL",
+    "ANON",
+    "EXPORT",
+    "RC4",
+    "3DES",
+    "DES",
+    "MD5",
+    "CBC",
+)
 
 _MAX_SPIFFE_URI = 2048
 _MAX_TRUST_DOMAIN = 255

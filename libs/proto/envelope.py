@@ -22,10 +22,15 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from types import MappingProxyType
 
-from libs.proto.status import ProtocolError, Status, malformed, status_from_wire, error
+from libs.proto.status import (
+    ProtocolError,
+    Status,
+    malformed,
+    status_from_wire,
+    error,
+)
 from libs.proto.tlv import TLVEntry, MsgType
 from libs.proto.headers import HeaderRegistry, HeaderSpec
-
 
 
 __all__ = [
@@ -55,7 +60,6 @@ MAX_HDR_BYTES = 4096
 MAX_ERROR_MSG_LEN = 256
 
 
-
 class MsgFlag:
     NONE = 0x0000
     FRAG_MORE = 0x0001
@@ -77,12 +81,31 @@ class HeaderTag(IntEnum):
 
 MESSAGE_REGISTRY = HeaderRegistry(
     (
-        HeaderSpec(HeaderTag.STATUS, 2, 2, True, frozenset((int(MsgType.END), int(MsgType.ERROR)))),
         HeaderSpec(
-            HeaderTag.MESSAGE, 1, 256, contexts=frozenset((int(MsgType.END), int(MsgType.ERROR)))
+            HeaderTag.STATUS,
+            2,
+            2,
+            True,
+            frozenset((int(MsgType.END), int(MsgType.ERROR))),
         ),
-        HeaderSpec(HeaderTag.SCHEMA_ID, 1, 128, contexts=frozenset((int(MsgType.DATA),))),
-        HeaderSpec(HeaderTag.RETRY_AFTER_MS, 4, 4, contexts=frozenset((int(MsgType.ERROR),))),
+        HeaderSpec(
+            HeaderTag.MESSAGE,
+            1,
+            256,
+            contexts=frozenset((int(MsgType.END), int(MsgType.ERROR))),
+        ),
+        HeaderSpec(
+            HeaderTag.SCHEMA_ID,
+            1,
+            128,
+            contexts=frozenset((int(MsgType.DATA),)),
+        ),
+        HeaderSpec(
+            HeaderTag.RETRY_AFTER_MS,
+            4,
+            4,
+            contexts=frozenset((int(MsgType.ERROR),)),
+        ),
         HeaderSpec(HeaderTag.DETAIL, 1, 1024, contexts=frozenset((int(MsgType.ERROR),))),
     )
 )
@@ -107,7 +130,6 @@ class Envelope:
     def is_critical(self) -> bool:
         return bool(self.flags & MsgFlag.CRITICAL)
 
-
     @property
     def terminal(self) -> bool:
         return self.type in (MsgType.END, MsgType.ERROR)
@@ -127,8 +149,11 @@ class Envelope:
     def _validate(self, *, inbound: bool, known_app: frozenset[int] = frozenset()) -> None:
         bad = Status.MALFORMED if inbound else Status.INVALID_ARGUMENT
         if self.type in (MsgType.CONTROL, MsgType.CREDIT):
-            raise error(Status.UNIMPLEMENTED if inbound else bad,
-                               f"{self.type.name} reserved in v1")
+            raise error(
+                Status.UNIMPLEMENTED if inbound else bad,
+                f"{self.type.name} reserved in v1",
+            )
+
 
 def encode_envelope(
     env: Envelope,
@@ -140,7 +165,12 @@ def encode_envelope(
             f"unknown envelope flags 0x{env.flags:04x}",
         )
     hdr = (
-        registry.encode(env.headers, max_bytes=MAX_HDR_BYTES, max_fields=32, context=int(env.type))
+        registry.encode(
+            env.headers,
+            max_bytes=MAX_HDR_BYTES,
+            max_fields=32,
+            context=int(env.type),
+        )
         if env.headers
         else b""
     )
@@ -174,7 +204,12 @@ def decode_envelope(
     hdr_bytes = raw[PREFIX_LEN : PREFIX_LEN + hlen]
     payload = raw[PREFIX_LEN + hlen :]
     headers = (
-        registry.decode(hdr_bytes, max_bytes=MAX_HDR_BYTES, max_fields=32, context=int(msg_type))
+        registry.decode(
+            hdr_bytes,
+            max_bytes=MAX_HDR_BYTES,
+            max_fields=32,
+            context=int(msg_type),
+        )
         if hlen
         else ()
     )
@@ -185,7 +220,7 @@ def decode_envelope(
                     Status.UNIMPLEMENTED,
                     f"unknown header 0x{int(entry.tag):04x} in CRITICAL envelope",
                 )
-            
+
     return Envelope(type=msg_type, headers=headers, payload=payload, flags=flags)
 
 
@@ -256,7 +291,12 @@ class EndFrame:
             int(k): v
             for k, v in by_tag.items()
             if int(k)
-            not in (HeaderTag.STATUS, HeaderTag.MESSAGE, HeaderTag.RETRY_AFTER_MS, HeaderTag.DETAIL)
+            not in (
+                HeaderTag.STATUS,
+                HeaderTag.MESSAGE,
+                HeaderTag.RETRY_AFTER_MS,
+                HeaderTag.DETAIL,
+            )
         }
         return cls(
             status=status,

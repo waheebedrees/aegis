@@ -478,7 +478,9 @@ def _scope(tools: str, budget: int, audience: str, domains: str = "") -> dict:
 
 def _generate_keypair(pub_path: Path, seed_path: Path) -> None:
     from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+        Ed25519PrivateKey,
+    )
 
     k = Ed25519PrivateKey.generate()
     seed = k.private_bytes(
@@ -551,9 +553,17 @@ def gen_keys(
 ) -> None:
     """Generate Ed25519 keypairs (authority, issuer, enrollment, agents)."""
     pairs = [
-        ("authority", directory / "authority.pub", directory / "authority.seed"),
+        (
+            "authority",
+            directory / "authority.pub",
+            directory / "authority.seed",
+        ),
         ("issuer", directory / "issuer.pub", directory / "issuer.seed"),
-        ("enrollment", directory / "enrollment.pub", directory / "enrollment.seed"),
+        (
+            "enrollment",
+            directory / "enrollment.pub",
+            directory / "enrollment.seed",
+        ),
     ]
     for name in _split(agents):
         pairs.append((name, directory / f"{name}.pub", directory / f"{name}.seed"))
@@ -692,7 +702,12 @@ def _render_node_toml(d: dict) -> str:
         "",
     ]
     if "listen" in d:
-        L += ["[listen]", f'host = "{d["listen"]["host"]}"', f"port = {d['listen']['port']}", ""]
+        L += [
+            "[listen]",
+            f'host = "{d["listen"]["host"]}"',
+            f"port = {d['listen']['port']}",
+            "",
+        ]
     if "stores" in d:
         L += ["[stores]", f'backend = "{d["stores"]["backend"]}"', ""]
     for name in sorted(d.get("peers", {})):
@@ -707,7 +722,11 @@ def _render_node_toml(d: dict) -> str:
     if "key" in d:
         L += ["[key]", f'seed_file = "{p(d["key"]["seed_file"])}"', ""]
     if "issuer" in d:
-        L += ["[issuer]", f'root_seed_file = "{p(d["issuer"]["root_seed_file"])}"', ""]
+        L += [
+            "[issuer]",
+            f'root_seed_file = "{p(d["issuer"]["root_seed_file"])}"',
+            "",
+        ]
     return "\n".join(L)
 
 
@@ -719,7 +738,8 @@ def gen_node(
     environment: Annotated[str, typer.Option("--environment")] = "development",
     listen: Annotated[str | None, typer.Option("--listen", help="HOST:PORT")] = None,
     peer: Annotated[
-        list[str], typer.Option("--peer", help="NAME=HOST:PORT@SPIFFE_ID (repeatable)")
+        list[str],
+        typer.Option("--peer", help="NAME=HOST:PORT@SPIFFE_ID (repeatable)"),
     ] = None,
     authority: Annotated[Path, typer.Option("--authority")] = Path("keys/authority.pub"),
     bundle: Annotated[Path, typer.Option("--bundle")] = Path("config/governance.bundle"),
@@ -845,7 +865,10 @@ def _summarize(doc: dict) -> dict:
         "expires_at": _show_time(doc.get("expires_at")),
         "trust": {
             "roots": [
-                {"issuer": r["issuer"], "keys": [thumbprint(k) for k in r["keys"]]}
+                {
+                    "issuer": r["issuer"],
+                    "keys": [thumbprint(k) for k in r["keys"]],
+                }
                 for r in doc["trust"]["roots"]
             ],
             "enrollment": (
@@ -978,7 +1001,8 @@ def sign(
     key: Annotated[Path, typer.Option("--key", help="Authority SEED (current)")],
     out: Annotated[Path, typer.Option("--out", help="Bundle output path")],
     next_key: Annotated[
-        Path | None, typer.Option("--next-key", help="Authority SEED (rotation)")
+        Path | None,
+        typer.Option("--next-key", help="Authority SEED (rotation)"),
     ] = None,
 ) -> None:
     """Compile governance.toml and sign the bundle."""
@@ -1216,7 +1240,8 @@ def remove_edge(
     parent: Annotated[str, typer.Option("--parent")],
     child: Annotated[str, typer.Option("--child")],
     force: Annotated[
-        bool, typer.Option("--force", help="Remove even if orphaned issuance exists")
+        bool,
+        typer.Option("--force", help="Remove even if orphaned issuance exists"),
     ] = False,
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
 ) -> None:
@@ -1309,7 +1334,12 @@ def add_pricing(
     if any(r["tool"] == tool for r in doc["pricing"]["rules"]):
         raise _die(f"pricing for {tool} exists")
     doc["pricing"]["rules"].append(
-        {"tool": tool, "base_micros": base, "per_kib_micros": per_kib, "max_micros": max_}
+        {
+            "tool": tool,
+            "base_micros": base,
+            "per_kib_micros": per_kib,
+            "max_micros": max_,
+        }
     )
     _commit(state.file, doc, dry_run=dry_run)
     _ok(f"added pricing for {tool}")
@@ -1319,7 +1349,8 @@ def add_pricing(
 def remove_pricing(
     tool: Annotated[str, typer.Option("--tool")],
     force: Annotated[
-        bool, typer.Option("--force", help="Write even if the result is invalid")
+        bool,
+        typer.Option("--force", help="Write even if the result is invalid"),
     ] = False,
     dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
 ) -> None:

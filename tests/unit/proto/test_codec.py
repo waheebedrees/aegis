@@ -172,7 +172,11 @@ def test_hello_initial_credit_bidi_only():
 
 
 def test_hello_critical_extension_rejected_by_unknown_side():
-    h = ChannelHello(mode=Mode.UNARY, method="M", extensions=(make_tlv(tag=0x2001, value=b"x"),))
+    h = ChannelHello(
+        mode=Mode.UNARY,
+        method="M",
+        extensions=(make_tlv(tag=0x2001, value=b"x"),),
+    )
     h.encode()
     # Simulate "unknown critical": rebuild the extension with the critical bit
     # Simpler: use a hello that declares an unknown critical tag.
@@ -235,7 +239,10 @@ def test_envelope_truncation_any_prefix_raises():
     )
     hdr = (
         MESSAGE_REGISTRY.encode(
-            env.headers, max_bytes=MAX_HDR_BYTES, max_fields=32, context=int(env.type)
+            env.headers,
+            max_bytes=MAX_HDR_BYTES,
+            max_fields=32,
+            context=int(env.type),
         )
         if env.headers
         else b""
@@ -289,7 +296,12 @@ def test_envelope_unknown_flag_bits_rejected():
 def test_envelope_critical_flag_rejects_unknown_header():
     # Build an envelope with an unknown header and CRITICAL flag set
     unknown_tlv = make_tlv(0x0999, b"x", critical=False)
-    env = Envelope(type=MsgType.DATA, flags=MsgFlag.CRITICAL, headers=(unknown_tlv,), payload=b"")
+    env = Envelope(
+        type=MsgType.DATA,
+        flags=MsgFlag.CRITICAL,
+        headers=(unknown_tlv,),
+        payload=b"",
+    )
     raw = encode_envelope(env)
     with pytest.raises(ProtocolError) as exc:
         decode_envelope(raw)

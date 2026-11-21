@@ -30,25 +30,27 @@ class MsgType(enum.IntEnum):
 
 
 class Scope(enum.Flag):
-    HELLO = enum.auto()        # ChannelHello extensions
-    MESSAGE = enum.auto()      # DATA envelopes (first fragment)
-    TRAILER = enum.auto()      # END / ERROR envelopes
+    HELLO = enum.auto()  # ChannelHello extensions
+    MESSAGE = enum.auto()  # DATA envelopes (first fragment)
+    TRAILER = enum.auto()  # END / ERROR envelopes
 
 
-_SCOPE_FOR = {MsgType.DATA: Scope.MESSAGE,
-              MsgType.END: Scope.TRAILER,
-              MsgType.ERROR: Scope.TRAILER}
+_SCOPE_FOR = {
+    MsgType.DATA: Scope.MESSAGE,
+    MsgType.END: Scope.TRAILER,
+    MsgType.ERROR: Scope.TRAILER,
+}
 
 
 def scope_for(mt: MsgType) -> Scope:
     return _SCOPE_FOR[mt]
+
 
 __all__ = [
     "MsgType",
     "TLVEntry",
     "TLV_CRITICAL",
     "TLV_NONE",
-
 ]
 
 _TLV = struct.Struct(">HBH")
@@ -80,7 +82,11 @@ class TLVEntry:
 
 
 def make_tlv(tag: int, value: bytes, *, critical: bool = False) -> TLVEntry:
-    return TLVEntry(int(tag), critical=bool(TLV_CRITICAL if critical else TLV_NONE), value=value)
+    return TLVEntry(
+        int(tag),
+        critical=bool(TLV_CRITICAL if critical else TLV_NONE),
+        value=value,
+    )
 
 
 def encode_tlvs(entries: Mapping[int, TLVEntry] | Sequence[TLVEntry]) -> bytes:
@@ -136,7 +142,10 @@ def decode_tlvs(
         if tag == 0:
             raise error(Status.MALFORMED, "reserved tag 0x0000")
         if flags & ~TLV_CRITICAL:
-            raise error(Status.MALFORMED, f"tag 0x{tag:04x} has unknown flags 0x{flags:02x}")
+            raise error(
+                Status.MALFORMED,
+                f"tag 0x{tag:04x} has unknown flags 0x{flags:02x}",
+            )
         if length > n - i:
             raise error(Status.MALFORMED, f"truncated value for tag 0x{tag:04x}")
         if tag <= prev_tag:

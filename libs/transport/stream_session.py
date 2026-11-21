@@ -389,7 +389,7 @@ class Stream:
         """Largest payload that always passes send()'s window and frame checks."""
         room = self._t._peer_max_frame - FIXED_OVERHEAD - MAC_LEN - 8
         return max(1, min(MAX_CHUNK_BYTES, self._peer_window, room))
-    
+
     @property
     def open_body(self) -> bytes:
         """Signed-and-MAC-protected OPEN body, for PoP binding."""
@@ -619,7 +619,7 @@ class Transport:
         "_data_handlers",  # kind -> Callable[[Frame], None]
         "_session_out",  # deque[Frame], drained by _control_loop
         "_data_bucket",  # [tokens, last_monotoni,
-        "_channel_binding"
+        "_channel_binding",
     )
 
     def __init__(self, tls: TlsConnection, config: TransportConfig, *, is_client: bool) -> None:
@@ -681,7 +681,6 @@ class Transport:
 
         self._ctl_ev = asyncio.Event()
         self._channel_binding = bytes(tls.channel_binding)
-
 
     @classmethod
     async def establish(
@@ -902,7 +901,7 @@ class Transport:
     def channel_binding(self) -> bytes:
         """RFC 9266-derived channel binding. Public; never a stream secret."""
         return self._channel_binding
-    
+
     async def __aenter__(self) -> Transport:
         return self
 

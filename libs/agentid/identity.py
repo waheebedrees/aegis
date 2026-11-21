@@ -56,7 +56,6 @@ PrivateKeyTypes = ec.EllipticCurvePrivateKey | ed25519.Ed25519PrivateKey | rsa.R
 PublicKeyTypes = ec.EllipticCurvePublicKey | ed25519.Ed25519PublicKey | rsa.RSAPublicKey
 
 
-
 class IdentityError(Exception):
     """Infrastructure failure (Workload API, PEM, socket). Map to 503, not 400."""
 
@@ -209,7 +208,14 @@ def _extract_private_key(svid) -> PrivateKeyTypes:
     raw = getattr(svid, "private_key", None)
     if raw is None:
         raise IdentityError("SVID_NO_KEY", type(svid).__name__)
-    if isinstance(raw, (ec.EllipticCurvePrivateKey, ed25519.Ed25519PrivateKey, rsa.RSAPrivateKey)):
+    if isinstance(
+        raw,
+        (
+            ec.EllipticCurvePrivateKey,
+            ed25519.Ed25519PrivateKey,
+            rsa.RSAPrivateKey,
+        ),
+    ):
         return raw
     if isinstance(raw, (bytes, bytearray)):
         blob = bytes(raw)
@@ -218,7 +224,12 @@ def _extract_private_key(svid) -> PrivateKeyTypes:
         else:
             key = load_der_private_key(blob, password=None)
         if not isinstance(
-            key, (ec.EllipticCurvePrivateKey, ed25519.Ed25519PrivateKey, rsa.RSAPrivateKey)
+            key,
+            (
+                ec.EllipticCurvePrivateKey,
+                ed25519.Ed25519PrivateKey,
+                rsa.RSAPrivateKey,
+            ),
         ):
             raise IdentityError("SVID_KEY_UNKNOWN", type(key).__name__)
         return key
@@ -230,7 +241,12 @@ def _extract_private_key(svid) -> PrivateKeyTypes:
         )
         key = serialization.load_pem_private_key(pem, password=None)
         if not isinstance(
-            key, (ec.EllipticCurvePrivateKey, ed25519.Ed25519PrivateKey, rsa.RSAPrivateKey)
+            key,
+            (
+                ec.EllipticCurvePrivateKey,
+                ed25519.Ed25519PrivateKey,
+                rsa.RSAPrivateKey,
+            ),
         ):
             raise IdentityError("SVID_KEY_UNKNOWN", type(key).__name__)
         return key
@@ -398,7 +414,12 @@ class IdentitySnapshot:
         leaf = certs[0]
         key = serialization.load_pem_private_key(key_pem, password=None)
         if not isinstance(
-            key, (ec.EllipticCurvePrivateKey, ed25519.Ed25519PrivateKey, rsa.RSAPrivateKey)
+            key,
+            (
+                ec.EllipticCurvePrivateKey,
+                ed25519.Ed25519PrivateKey,
+                rsa.RSAPrivateKey,
+            ),
         ):
             raise IdentityError("UNSUPPORTED_PRIVATE_KEY", type(key).__name__)
         now = _utc_now()
@@ -686,7 +707,10 @@ class SVIDWatcher:
             try:
                 while not self._stop.is_set():
                     if source.is_closed():
-                        log.warning("X509Source closed: %r", getattr(source, "_error", None))
+                        log.warning(
+                            "X509Source closed: %r",
+                            getattr(source, "_error", None),
+                        )
                         raise IdentityError(
                             "SOURCE_CLOSED",
                             "X509Source closed by underlying Workload API error",
@@ -812,11 +836,20 @@ class SSLContextHolder:
             leaf_pem = x509.load_der_x509_certificate(snapshot.leaf_cert_der).public_bytes(
                 serialization.Encoding.PEM
             )
-            with open(os.open(cert_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as f:
+            with open(
+                os.open(cert_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600),
+                "wb",
+            ) as f:
                 f.write(leaf_pem)
-            with open(os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as f:
+            with open(
+                os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600),
+                "wb",
+            ) as f:
                 f.write(_private_key_pem(snapshot.private_key))
-            with open(os.open(bundle_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644), "wb") as f:
+            with open(
+                os.open(bundle_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644),
+                "wb",
+            ) as f:
                 for a in snapshot.trust_anchors:
                     f.write(a.public_bytes(serialization.Encoding.PEM))
             with self._lock:

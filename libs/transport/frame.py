@@ -411,7 +411,12 @@ class FrameType:
 # decodable-but-unroutable frame types (no dead surface).
 DEFAULT_REGISTRY = FrameRegistry(
     (
-        FrameSpec(FrameType.SESSION_INIT, "SESSION_INIT", min_body=1, max_body=HELLO_MAX_BODY),
+        FrameSpec(
+            FrameType.SESSION_INIT,
+            "SESSION_INIT",
+            min_body=1,
+            max_body=HELLO_MAX_BODY,
+        ),
         FrameSpec(
             FrameType.DATA,
             "DATA",
@@ -453,8 +458,18 @@ DEFAULT_REGISTRY = FrameRegistry(
             max_body=MAX_REASON_BYTES,
             stream_id_rule=StreamIdRule.NONZERO,
         ),
-        FrameSpec(FrameType.PING, "PING", min_body=PING_NONCE_BYTES, max_body=PING_NONCE_BYTES),
-        FrameSpec(FrameType.PONG, "PONG", min_body=PING_NONCE_BYTES, max_body=PING_NONCE_BYTES),
+        FrameSpec(
+            FrameType.PING,
+            "PING",
+            min_body=PING_NONCE_BYTES,
+            max_body=PING_NONCE_BYTES,
+        ),
+        FrameSpec(
+            FrameType.PONG,
+            "PONG",
+            min_body=PING_NONCE_BYTES,
+            max_body=PING_NONCE_BYTES,
+        ),
         FrameSpec(FrameType.CLOSE, "CLOSE", max_body=MAX_REASON_BYTES),
         FrameSpec(FrameType.ERROR, "ERROR", max_body=256),
     )
@@ -640,7 +655,11 @@ def make_window_update(*, stream_id: int, credits: int) -> Frame:
         raise FrameError("BAD_STREAM_ID", repr(stream_id))
     if not _is_int(credits) or not 1 <= credits <= MAX_WINDOW_CREDIT:
         raise FrameError("BAD_CREDITS", repr(credits))
-    return Frame(type=FrameType.WINDOW_UPDATE, stream_id=stream_id, body=_U32.pack(credits))
+    return Frame(
+        type=FrameType.WINDOW_UPDATE,
+        stream_id=stream_id,
+        body=_U32.pack(credits),
+    )
 
 
 def parse_window_update(
@@ -841,6 +860,7 @@ RecvOutcome = FrameReceived | StreamClosed
 
 WriteOutcome = FrameWritten | StreamClosed
 CloseOutcome = StreamCloseSucceeded | StreamCloseFailed
+
 
 def _to_timeout(value: object, name: str) -> float | None:
     if value is None:

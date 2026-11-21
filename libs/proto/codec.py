@@ -19,8 +19,8 @@ from libs.proto.status import ProtocolError, Status
 
 
 __all__ = [
-    "OCTET_STREAM", 
-    "JSON", 
+    "OCTET_STREAM",
+    "JSON",
     "CBOR",
     "CodecLimits",
     "Codec",
@@ -98,7 +98,8 @@ class RawCodec:
     def encode(self, value: Any, schema_id: str = "") -> bytes:
         if type(value) is not bytes:
             raise ProtocolError(
-                Status.INVALID_ARGUMENT, f"raw expects bytes, got {type(value).__name__}"
+                Status.INVALID_ARGUMENT,
+                f"raw expects bytes, got {type(value).__name__}",
             )
         if len(value) > self._limits.max_bytes:
             raise ProtocolError(Status.OUT_OF_RANGE, str(len(value)))

@@ -11,7 +11,15 @@ from libs.proto.channel import (
     accept_channel,
     open_channel,
 )
-from libs.proto.codec import DEFAULT_CODECS, Codec, JsonCodec, RawCodec, JSON, CBOR, OCTET_STREAM
+from libs.proto.codec import (
+    DEFAULT_CODECS,
+    Codec,
+    JsonCodec,
+    RawCodec,
+    JSON,
+    CBOR,
+    OCTET_STREAM,
+)
 from libs.proto.hello import (
     HELLO_REGISTRY,
     ChannelHello,
@@ -114,5 +122,7 @@ __all__ = [
     "ByteStream",
     "open_channel",
     "accept_channel",
-    "JSON", "CBOR", "OCTET_STREAM"
+    "JSON",
+    "CBOR",
+    "OCTET_STREAM",
 ]

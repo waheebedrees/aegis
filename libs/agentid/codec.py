@@ -111,7 +111,10 @@ def _compile_object(cls: type, depth: int) -> _Compiled:
 
     def enc(obj: Any) -> bytes:
         if type(obj) is not cls:
-            raise CodecError("WRONG_TYPE", f"expected {cls.__name__}, got {type(obj).__name__}")
+            raise CodecError(
+                "WRONG_TYPE",
+                f"expected {cls.__name__}, got {type(obj).__name__}",
+            )
         return b"".join(f_enc(getattr(obj, n)) for n, f_enc, _ in parts)
 
     def dec(raw: bytes, off: int) -> tuple[Any, int]:

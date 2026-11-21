@@ -985,7 +985,13 @@ async def transport_pair(
         return b'{"balance": 42}'
 
     tools = ToolRegistry()
-    tools.register("payments", "read", cost=1000, handler=read_balance, settle=lambda result: 100)
+    tools.register(
+        "payments",
+        "read",
+        cost=1000,
+        handler=read_balance,
+        settle=lambda result: 100,
+    )
     client_handler = Client(client_node, client_cfg)
 
     entitlements = cc.EntitlementTable(
@@ -1017,7 +1023,10 @@ async def transport_pair(
                     root_issuers=frozenset({server_node.spiffe_id}),
                     edges=frozenset(
                         {
-                            (server_node.spiffe_id, client_node.spiffe_id),  # (node-1, node-2)
+                            (
+                                server_node.spiffe_id,
+                                client_node.spiffe_id,
+                            ),  # (node-1, node-2)
                         }
                     ),
                 ),
@@ -1100,7 +1109,11 @@ async def transport_pair(
 
 async def test_01_enroll(server_node, client_node, gateway_node):
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         async with c.handler(s.port, s.name, cfg) as ch:
             enrolled = await ch.enroll()
             assert enrolled.holder == ch.spiffe_id
@@ -1111,7 +1124,11 @@ async def test_01_enroll(server_node, client_node, gateway_node):
 
 async def test_02_issue(server_node, client_node, gateway_node):
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         async with c.handler(s.port, s.name, cfg) as ch:
             await ch.enroll()
             cap = await ch.request_token("payments:read")
@@ -1128,7 +1145,11 @@ async def test_02_issue(server_node, client_node, gateway_node):
 
 async def test_03_issue_out_of_scope(server_node, client_node, gateway_node):
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         async with c.handler(s.port, s.name, cfg) as ch:
             await ch.enroll()
             with pytest.raises(RemoteError) as ei:
@@ -1139,7 +1160,11 @@ async def test_03_issue_out_of_scope(server_node, client_node, gateway_node):
 
 async def test_04_issue_not_enrolled(server_node, client_node, gateway_node):
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         async with c.handler(s.port, s.name, cfg) as ch:
             with pytest.raises(RemoteError) as ei:
                 await ch.request_token("payments:read")
@@ -1152,7 +1177,11 @@ async def test_04_issue_not_enrolled(server_node, client_node, gateway_node):
 
 async def test_05_invoke(server_node, client_node, gateway_node):
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         # Phase 1 — enroll and issue against the issuer (server)
         async with c.handler(s.port, s.name, cfg) as ch:
             await ch.enroll()
@@ -1176,7 +1205,11 @@ async def test_05_invoke(server_node, client_node, gateway_node):
 async def test_06_invoke_replay(server_node, client_node, gateway_node):
     """The same PoP is rejected the second time by the replay store."""
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         async with c.handler(s.port, s.name, cfg) as ch:
             await ch.enroll()
             cap = await ch.request_token("payments:read")
@@ -1215,7 +1248,11 @@ async def test_06b_fresh_nonce_per_invoke(server_node, client_node, gateway_node
     """Two invokes from the same client, same capability, same connection,
     must both succeed. Proves the nonce is fresh per PoP."""
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         async with c.handler(s.port, s.name, cfg) as ch:
             await ch.enroll()
             cap = await ch.request_token("payments:read")
@@ -1244,7 +1281,11 @@ async def test_06c_failed_invoke_burns_nonce(server_node, client_node, gateway_n
     """A PoP that fails a policy check is still burned. Retrying the same
     PoP must fail with REPLAY, not with the original policy error."""
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         async with c.handler(s.port, s.name, cfg) as ch:
             await ch.enroll()
             cap = await ch.request_token("payments:read")
@@ -1291,7 +1332,11 @@ async def test_06c_failed_invoke_burns_nonce(server_node, client_node, gateway_n
 async def test_07_invoke_body_tampered(server_node, client_node, gateway_node):
     """PoP signs body A but the stream carries body B → ph mismatch."""
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         async with c.handler(s.port, s.name, cfg) as ch:
             await ch.enroll()
             cap = await ch.request_token("payments:read")
@@ -1328,7 +1373,11 @@ async def test_07_invoke_body_tampered(server_node, client_node, gateway_node):
 async def test_08_invoke_unknown_tool(server_node, client_node, gateway_node):
     """Token permits the action, but the broker has no handler for it."""
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         async with c.handler(s.port, s.name, cfg) as ch:
             await ch.enroll()
             # payments:write is in the issuer's scope but the broker's
@@ -1351,7 +1400,11 @@ async def test_08_invoke_unknown_tool(server_node, client_node, gateway_node):
 async def test_09_invoke_wrong_verifier(server_node, client_node, gateway_node):
     """PoP audience must equal the verifier's SPIFFE ID."""
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         async with c.handler(s.port, s.name, cfg) as ch:
             await ch.enroll()
             cap = await ch.request_token("payments:read")
@@ -1384,7 +1437,11 @@ async def test_09_invoke_wrong_verifier(server_node, client_node, gateway_node):
 async def test_10_invoke_wrong_session(server_node, client_node, gateway_node):
     """The server-held session must match the token's sid."""
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         async with c.handler(s.port, s.name, cfg) as ch:
             await ch.enroll()
             cap = await ch.request_token("payments:read")
@@ -1476,9 +1533,19 @@ async def test_14_expired_leaf_blocks_transport(tmp_path):
     gateway_node = pki.make_node("gateway")
 
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         with pytest.raises(
-            (ssl.SSLError, TransportSetupError, TransportError, ConnectionError, OSError)
+            (
+                ssl.SSLError,
+                TransportSetupError,
+                TransportError,
+                ConnectionError,
+                OSError,
+            )
         ) as ei:
             async with c.handler(s.port, s.name, cfg) as ch:
                 pytest.fail(f"Transport established with expired leaf; peer={ch.peer_id!r}")
@@ -1520,9 +1587,19 @@ async def test_13_expired_ca_blocks_transport(tmp_path):
     gateway_node = pki.make_node("gateway")
 
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         with pytest.raises(
-            (ssl.SSLError, TransportSetupError, TransportError, ConnectionError, OSError)
+            (
+                ssl.SSLError,
+                TransportSetupError,
+                TransportError,
+                ConnectionError,
+                OSError,
+            )
         ) as ei:
             async with c.handler(s.port, s.name, cfg) as ch:
                 # Reaching this line means Transport.establish returned a
@@ -1551,7 +1628,11 @@ async def test_13_expired_ca_blocks_transport(tmp_path):
 async def test_15_stale_pop(server_node, client_node, gateway_node):
     """PoP older than max_skew is rejected before the nonce is consumed."""
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         async with c.handler(s.port, s.name, cfg) as ch:
             await ch.enroll()
             cap = await ch.request_token("payments:read")
@@ -1582,7 +1663,11 @@ async def test_15_stale_pop(server_node, client_node, gateway_node):
 
 async def test_16_evidence_logged(server_node, client_node, gateway_node):
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         async with c.handler(s.port, s.name, cfg) as ch:
             await ch.enroll()
             cap = await ch.request_token("payments:read")
@@ -1611,7 +1696,11 @@ async def test_16_evidence_logged(server_node, client_node, gateway_node):
 
 async def test_17_revoked_key_rejected(server_node, client_node, gateway_node):
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         async with c.handler(s.port, s.name, cfg) as ch:
             await ch.enroll()
             cap = await ch.request_token("payments:read")
@@ -1639,7 +1728,11 @@ async def test_18_budget_exhausted(server_node, client_node, gateway_node):
     (remaining 900), the second reserve needs 1000 and only 900 is left.
     """
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         s.issue_budget_micros = 1_000
 
         async with c.handler(s.port, s.name, cfg) as ch:
@@ -1672,7 +1765,11 @@ async def test_18_budget_exhausted(server_node, client_node, gateway_node):
 
 async def test_19_replay_store_state(server_node, client_node, gateway_node):
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         async with c.handler(s.port, s.name, cfg) as ch:
             await ch.enroll()
             cap = await ch.request_token("payments:read")
@@ -1701,7 +1798,11 @@ async def test_19_replay_store_state(server_node, client_node, gateway_node):
 async def stolen_governor_key_plus_agent_identity(server_node, client_node, gateway_node):
     """Expected to PASS today. That pass is the vulnerability."""
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         attacker = cc.CapChainKey.generate(agent_id=client_node.spiffe_id)
         forged = cc.mint(
             s.governor_key,  # stolen governor key
@@ -1749,7 +1850,11 @@ async def test_20_stolen_governor_key_attacker_cnf_rejected_v2(
     server_node, client_node, gateway_node
 ):
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         # Attacker enrolls legitimately (they own client_node identity, so
         # they get a valid receipt for THEIR key)
         attacker = cc.CapChainKey.generate(agent_id=client_node.spiffe_id)
@@ -1773,7 +1878,11 @@ async def test_20_stolen_governor_key_attacker_cnf_rejected_v2(
         async with c.handler(b.port, b.name, cfg) as ch:
             with pytest.raises(RemoteError) as ei:
                 await _invoke_raw(
-                    ch, token=forged, signer=attacker, verifier_id=b.spiffe_id, now=now
+                    ch,
+                    token=forged,
+                    signer=attacker,
+                    verifier_id=b.spiffe_id,
+                    now=now,
                 )
             assert ei.value.code == "CNF_NOT_REGISTERED"
 
@@ -1781,7 +1890,11 @@ async def test_20_stolen_governor_key_attacker_cnf_rejected_v2(
 async def stolen_governor_key_alone_rejected(server_node, client_node, gateway_node):
     """Expected to be REJECTED. If this passes, things are worse than I claimed."""
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         outsider = Client(server_node, cfg)  # mTLS identity is node-1, not the holder
         forged = cc.mint(
             s.governor_key,  # stolen governor key
@@ -1904,7 +2017,11 @@ async def _invoke_raw(
 
 async def test_20_stolen_governor_key_attacker_cnf_rejected(server_node, client_node, gateway_node):
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         attacker = cc.CapChainKey.generate(agent_id=client_node.spiffe_id)
         now = c.clock.now_seconds()
         forged = _forge(
@@ -1920,14 +2037,22 @@ async def test_20_stolen_governor_key_attacker_cnf_rejected(server_node, client_
         async with c.handler(b.port, b.name, cfg) as ch:
             with pytest.raises(RemoteError) as ei:
                 await _invoke_raw(
-                    ch, token=forged, signer=attacker, verifier_id=b.spiffe_id, now=now
+                    ch,
+                    token=forged,
+                    signer=attacker,
+                    verifier_id=b.spiffe_id,
+                    now=now,
                 )
             assert ei.value.code == "CNF_NOT_REGISTERED"
 
 
 async def test_21_outsider_with_governor_identity_rejected(server_node, client_node, gateway_node):
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         outsider = Client(server_node, cfg)  # TLS identity = node-1
         now = outsider.clock.now_seconds()
         forged = _forge(
@@ -1943,7 +2068,11 @@ async def test_21_outsider_with_governor_identity_rejected(server_node, client_n
         async with outsider.handler(b.port, b.name, cfg) as ch:
             with pytest.raises(RemoteError) as ei:
                 await _invoke_raw(
-                    ch, token=forged, signer=outsider.key, verifier_id=b.spiffe_id, now=now
+                    ch,
+                    token=forged,
+                    signer=outsider.key,
+                    verifier_id=b.spiffe_id,
+                    now=now,
                 )
             assert ei.value.code == "ROLE_REQUIRED"
 
@@ -1951,7 +2080,12 @@ async def test_21_outsider_with_governor_identity_rejected(server_node, client_n
 @pytest.mark.parametrize(
     "tools,budget,ttl,code",
     [
-        ({"payments:read", "payments:delete"}, 1_000_000, 3600, "SCOPE_EXCEEDS_ENTITLEMENT"),
+        (
+            {"payments:read", "payments:delete"},
+            1_000_000,
+            3600,
+            "SCOPE_EXCEEDS_ENTITLEMENT",
+        ),
         ({"*"}, 1_000_000, 3600, "SCOPE_EXCEEDS_ENTITLEMENT"),
         ({"payments:read"}, 10**12, 3600, "BUDGET_EXCEEDS_ENTITLEMENT"),
         ({"payments:read"}, 1_000_000, 86400, "TTL_EXCEEDS_ENTITLEMENT"),
@@ -1962,7 +2096,11 @@ async def test_22_registered_holder_overbroad_token_rejected(
 ):
     """The cnf is registered, so only the ceiling is under test."""
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         now = c.clock.now_seconds()
         forged = _forge(
             s,
@@ -1976,7 +2114,13 @@ async def test_22_registered_holder_overbroad_token_rejected(
         )
         async with c.handler(b.port, b.name, cfg) as ch:
             with pytest.raises(RemoteError) as ei:
-                await _invoke_raw(ch, token=forged, signer=c.key, verifier_id=b.spiffe_id, now=now)
+                await _invoke_raw(
+                    ch,
+                    token=forged,
+                    signer=c.key,
+                    verifier_id=b.spiffe_id,
+                    now=now,
+                )
             assert ei.value.code == code
 
 
@@ -1984,7 +2128,11 @@ async def test_23_legit_token_with_other_pop_key_rejected(server_node, client_no
     """Tests capchain, not the new code. If this fails, the gateway is not
     binding PoP to leaf.cnf, which is a hole regardless of the table."""
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         async with c.handler(s.port, s.name, cfg) as ch:
             await ch.enroll()
             cap = await ch.request_token("payments:read")
@@ -2014,7 +2162,11 @@ async def test_24_many_tokens_cannot_exceed_outstanding_budget(
     each token claiming 1M, the fourth must be rejected.
     """
     cfg = TransportConfig(stream_window=4 * 1024)
-    async with transport_pair(server_node, client_node, gateway_node) as (b, s, c):
+    async with transport_pair(server_node, client_node, gateway_node) as (
+        b,
+        s,
+        c,
+    ):
         now = c.clock.now_seconds()
         codes = []
 

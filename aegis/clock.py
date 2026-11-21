@@ -231,7 +231,11 @@ class FixedClock(Clock):
         mono_ms: int = 0,
         skew_ms: int = 0,
     ) -> None:
-        for name, value in (("wall_ms", wall_ms), ("mono_ms", mono_ms), ("skew_ms", skew_ms)):
+        for name, value in (
+            ("wall_ms", wall_ms),
+            ("mono_ms", mono_ms),
+            ("skew_ms", skew_ms),
+        ):
             if isinstance(value, bool) or not isinstance(value, int):
                 raise ValueError(f"{name} must be an int")
         self._wall = wall_ms
@@ -403,7 +407,11 @@ class TimeBeacon:
 
         For the beacon issuer and for tests. The verifier never calls this.
         """
-        for name, value in (("t_ms", t_ms), ("iat_ms", iat_ms), ("exp_ms", exp_ms)):
+        for name, value in (
+            ("t_ms", t_ms),
+            ("iat_ms", iat_ms),
+            ("exp_ms", exp_ms),
+        ):
             if isinstance(value, bool) or not isinstance(value, int):
                 raise ValueError(f"{name} must be an int")
         if not isinstance(source, str) or not source:

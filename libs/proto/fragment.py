@@ -39,7 +39,6 @@ HARD_MAX_MESSAGE_BYTES = 64 * 1024 * 1024
 DEFAULT_MAX_FRAGMENTS = 1024
 
 
-
 @dataclass(frozen=True, slots=True)
 class Message:
     data: bytes
@@ -67,7 +66,10 @@ class Fragmenter:
             raise ProtocolError(Status.INVALID_ARGUMENT, "data must be bytes")
         hdr_bytes = (
             MESSAGE_REGISTRY.encode(
-                headers, max_bytes=MAX_HDR_BYTES, max_fields=32, context=int(MsgType.DATA)
+                headers,
+                max_bytes=MAX_HDR_BYTES,
+                max_fields=32,
+                context=int(MsgType.DATA),
             )
             if headers
             else b""

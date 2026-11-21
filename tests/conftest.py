@@ -15,7 +15,6 @@ sys.path.append(str(Path(__file__).parent.parent))
 pytestmark = pytest.mark.asyncio
 
 
-
 endpoints = {
     "node-1": {"port": 5555, "host": "127.0.0.1"},
     "node-2": {"port": 5554, "host": "127.0.0.1"},

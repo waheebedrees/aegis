@@ -1,5 +1,3 @@
-
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -35,7 +33,7 @@ class HeaderSpec:
         if not 0 <= self.min_bytes <= self.max_bytes <= 0xFFFF:
             raise ValueError("length bounds")
 
-        
+
 class HeaderRegistry:
     """Immutable mapping of tag => HeaderSpec. Extendable via extend()."""
 
@@ -139,4 +137,3 @@ class HeaderRegistry:
             if len(out) > max_fields:
                 raise malformed("too many headers")
         return tuple(out)
-

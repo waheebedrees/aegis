@@ -5,12 +5,19 @@ import time
 
 import pytest
 
-from libs.proto import Channel, ChannelConfig, RawCodec, accept_channel, open_channel
+from libs.proto import (
+    Channel,
+    ChannelConfig,
+    RawCodec,
+    accept_channel,
+    open_channel,
+)
 from libs.proto.channel import EOF
-from libs.proto.hello import  ChannelHello, Mode
+from libs.proto.hello import ChannelHello, Mode
 from libs.proto.envelope import MsgType
 from libs.proto.fragment import DEFAULT_MAX_FRAGMENTS
 from libs.proto.status import ProtocolError, RemoteError, Status
+
 
 class FakeByteStream:
     """In-memory duplex byte stream. Pair two with attach() and they talk."""
@@ -37,7 +44,6 @@ class FakeByteStream:
     @property
     def kind(self) -> str:
         return self._kind
-
 
     @property
     def open_payload(self) -> bytes:
@@ -72,7 +78,6 @@ class FakeByteStream:
         self.cancel_reason = reason
 
 
-
 def make_pair(
     mode: Mode,
     method: str = "M",
@@ -90,8 +95,22 @@ def make_pair(
     s_acc.open_payload = hello.encode()
 
     codec = RawCodec()
-    ini = Channel(s_ini, hello, codec, role="initiator", config=config, deadline_at=deadline_at_ini)
-    acc = Channel(s_acc, hello, codec, role="acceptor", config=config, deadline_at=deadline_at_acc)
+    ini = Channel(
+        s_ini,
+        hello,
+        codec,
+        role="initiator",
+        config=config,
+        deadline_at=deadline_at_ini,
+    )
+    acc = Channel(
+        s_acc,
+        hello,
+        codec,
+        role="acceptor",
+        config=config,
+        deadline_at=deadline_at_acc,
+    )
     return ini, acc, s_ini, s_acc
 
 
@@ -131,7 +150,13 @@ class TestConstructor:
         "mode,role",
         [
             (m, r)
-            for m in (Mode.UNARY, Mode.CLIENT_STREAM, Mode.SERVER_STREAM, Mode.BIDI, Mode.DATAGRAM)
+            for m in (
+                Mode.UNARY,
+                Mode.CLIENT_STREAM,
+                Mode.SERVER_STREAM,
+                Mode.BIDI,
+                Mode.DATAGRAM,
+            )
             for r in ("initiator", "acceptor")
         ],
     )
@@ -505,7 +530,11 @@ class TestWireErrorPaths:
         ini, acc, s_ini, s_acc = make_pair(Mode.BIDI)
         # Build a proper END then stray DATA — send the END, then data
 
-        from libs.proto.envelope import Envelope, encode_envelope, make_end_headers
+        from libs.proto.envelope import (
+            Envelope,
+            encode_envelope,
+            make_end_headers,
+        )
 
         end_env = Envelope(
             MsgType.END,
@@ -520,7 +549,11 @@ class TestWireErrorPaths:
 
     @pytest.mark.asyncio
     async def test_unary_ok_end_requires_exactly_one_message(self):
-        from libs.proto.envelope import Envelope, encode_envelope, make_end_headers
+        from libs.proto.envelope import (
+            Envelope,
+            encode_envelope,
+            make_end_headers,
+        )
 
         ini, acc, s_ini, s_acc = make_pair(Mode.UNARY)
         end_env = Envelope(MsgType.END, headers=make_end_headers(Status.OK))

@@ -933,7 +933,11 @@ class Signed:
         raw = bytes(raw)
         try:
             document = loads_strict(raw)
-            if not isinstance(document, dict) or set(document) != {"b", "s", "k"}:
+            if not isinstance(document, dict) or set(document) != {
+                "b",
+                "s",
+                "k",
+            }:
                 raise RejectError(Code.POP_MALFORMED, "shape")
             envelope = Signed(
                 b64d(document["b"]),

@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import struct
@@ -126,7 +125,11 @@ class ChannelHello:
     def encode(self, registry: HeaderRegistry = HELLO_REGISTRY) -> bytes:
         fields: list[TLVEntry] = [
             TLVEntry(HelloTag.MODE, bytes((self.mode,)), True),
-            TLVEntry(HelloTag.CONTENT_TYPE, _ascii(self.content_type, "content_type", 1, 64), True),
+            TLVEntry(
+                HelloTag.CONTENT_TYPE,
+                _ascii(self.content_type, "content_type", 1, 64),
+                True,
+            ),
         ]
         if self.method:
             fields.append(TLVEntry(HelloTag.METHOD, _ascii(self.method, "method", 1, 128), True))
@@ -136,15 +139,28 @@ class ChannelHello:
             fields.append(TLVEntry(HelloTag.CORRELATION_ID, self.correlation_id))
         if self.traceparent:
             fields.append(
-                TLVEntry(HelloTag.TRACE_PARENT, _ascii(self.traceparent, "traceparent", 1, 64))
+                TLVEntry(
+                    HelloTag.TRACE_PARENT,
+                    _ascii(self.traceparent, "traceparent", 1, 64),
+                )
             )
         if self.idempotency_key:
             fields.append(TLVEntry(HelloTag.IDEMPOTENCY_KEY, self.idempotency_key))
         if self.accept_types:
             joined = ",".join(self.accept_types)
-            fields.append(TLVEntry(HelloTag.ACCEPT_TYPES, _ascii(joined, "accept_types", 1, 256)))
+            fields.append(
+                TLVEntry(
+                    HelloTag.ACCEPT_TYPES,
+                    _ascii(joined, "accept_types", 1, 256),
+                )
+            )
         if self.schema_id:
-            fields.append(TLVEntry(HelloTag.SCHEMA_ID, _ascii(self.schema_id, "schema_id", 1, 128)))
+            fields.append(
+                TLVEntry(
+                    HelloTag.SCHEMA_ID,
+                    _ascii(self.schema_id, "schema_id", 1, 128),
+                )
+            )
         if self.priority:
             fields.append(TLVEntry(HelloTag.PRIORITY, bytes((self.priority,))))
 
@@ -224,4 +240,4 @@ class ChannelHello:
             raise malformed("non-canonical ChannelHello")
 
         return hello
-
+    

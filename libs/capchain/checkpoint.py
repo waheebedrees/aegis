@@ -1256,7 +1256,12 @@ class PostgresBudgetLedger(_Pg):
                     COALESCE(budget_chains.expires_at, 0),
                     COALESCE(EXCLUDED.expires_at, 0)
                 )""",
-                (cid, root_cap, root_cap, expires_at if expires_at is not None else 0),
+                (
+                    cid,
+                    root_cap,
+                    root_cap,
+                    expires_at if expires_at is not None else 0,
+                ),
             )
             await cur.execute(
                 "SELECT root_cap, remaining FROM budget_chains WHERE cid = %s FOR UPDATE",

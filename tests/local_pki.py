@@ -276,7 +276,10 @@ def issue_leaf(
         )
         .add_extension(
             x509.ExtendedKeyUsage(
-                [ExtendedKeyUsageOID.SERVER_AUTH, ExtendedKeyUsageOID.CLIENT_AUTH]
+                [
+                    ExtendedKeyUsageOID.SERVER_AUTH,
+                    ExtendedKeyUsageOID.CLIENT_AUTH,
+                ]
             ),
             critical=False,
         )
@@ -373,7 +376,9 @@ class PKI:
         )
         self._endpoints = {
             name: Endpoint(
-                spiffe_id=f"{self._node_spiffe}/{name}", port=value["port"], host=value["host"]
+                spiffe_id=f"{self._node_spiffe}/{name}",
+                port=value["port"],
+                host=value["host"],
             )
             for name, value in endpoints.items()
         }

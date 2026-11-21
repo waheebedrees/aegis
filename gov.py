@@ -194,7 +194,11 @@ log = logging.getLogger("aegis.gov")
 class _CliFormatter(logging.Formatter):
     """INFO: bare message.  WARNING/ERROR: 'warning: ' / 'error: ' prefix."""
 
-    _PREFIX = {"WARNING": "warning: ", "ERROR": "error: ", "CRITICAL": "error: "}
+    _PREFIX = {
+        "WARNING": "warning: ",
+        "ERROR": "error: ",
+        "CRITICAL": "error: ",
+    }
 
     def format(self, record: logging.LogRecord) -> str:
         return self._PREFIX.get(record.levelname, "") + record.getMessage()
@@ -400,7 +404,9 @@ def _save(path: Path, doc: dict) -> None:
 def _generate_keypair(pub_path: Path, seed_path: Path) -> None:
     """Write a fresh Ed25519 keypair. Seed is chmod 0600; pub is 0644."""
     from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+        Ed25519PrivateKey,
+    )
 
     k = Ed25519PrivateKey.generate()
     seed = k.private_bytes(
@@ -444,9 +450,15 @@ def _add_scope_args(sp: argparse.ArgumentParser, prefix: str) -> None:
     sp.add_argument(f"--{prefix}-tools", required=True, help="comma-separated tool ids")
     sp.add_argument(f"--{prefix}-budget", type=int, required=True, help="budget in micros")
     sp.add_argument(
-        f"--{prefix}-audience", required=True, help="comma-separated audience spiffe ids"
+        f"--{prefix}-audience",
+        required=True,
+        help="comma-separated audience spiffe ids",
     )
-    sp.add_argument(f"--{prefix}-domains", default="", help="optional comma-separated domains")
+    sp.add_argument(
+        f"--{prefix}-domains",
+        default="",
+        help="optional comma-separated domains",
+    )
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -598,7 +610,12 @@ def _render_node_toml(d: dict) -> str:
         "",
     ]
     if "listen" in d:
-        L += ["[listen]", f'host = "{d["listen"]["host"]}"', f"port = {d['listen']['port']}", ""]
+        L += [
+            "[listen]",
+            f'host = "{d["listen"]["host"]}"',
+            f"port = {d['listen']['port']}",
+            "",
+        ]
     if "stores" in d:
         L += ["[stores]", f'backend = "{d["stores"]["backend"]}"', ""]
     for name in sorted(d.get("peers", {})):
@@ -613,7 +630,11 @@ def _render_node_toml(d: dict) -> str:
     if "key" in d:
         L += ["[key]", f'seed_file = "{p(d["key"]["seed_file"])}"', ""]
     if "issuer" in d:
-        L += ["[issuer]", f'root_seed_file = "{p(d["issuer"]["root_seed_file"])}"', ""]
+        L += [
+            "[issuer]",
+            f'root_seed_file = "{p(d["issuer"]["root_seed_file"])}"',
+            "",
+        ]
     return "\n".join(L)
 
 
@@ -763,10 +784,18 @@ def cmd_show(args: argparse.Namespace) -> int:
     for r in doc["trust"]["roots"]:
         log.info("issuer      = %s", r["issuer"])
         for k in r["keys"]:
-            log.info("  key       = %s  (sha256=%s..)", _encode(k, "raw_b64"), thumbprint(k)[:16])
+            log.info(
+                "  key       = %s  (sha256=%s..)",
+                _encode(k, "raw_b64"),
+                thumbprint(k)[:16],
+            )
     if "enrollment" in doc["trust"]:
         k = doc["trust"]["enrollment"]
-        log.info("enrollment  = %s  (sha256=%s..)", _encode(k, "raw_b64"), thumbprint(k)[:16])
+        log.info(
+            "enrollment  = %s  (sha256=%s..)",
+            _encode(k, "raw_b64"),
+            thumbprint(k)[:16],
+        )
     log.info("max_depth   = %s", doc["policy"]["max_depth"])
     log.info("models      = %s", doc["policy"]["models"])
     log.info("edges       = %d", len(doc["policy"]["edges"]))
@@ -826,7 +855,12 @@ def cmd_sign(args: argparse.Namespace) -> int:
     tmp.write_bytes(raw)
     tmp.replace(out)
 
-    log.info("✓ signed → %s (%d bytes)%s", out, len(raw), " [rotation]" if nxt is not None else "")
+    log.info(
+        "✓ signed → %s (%d bytes)%s",
+        out,
+        len(raw),
+        " [rotation]" if nxt is not None else "",
+    )
     return 0
 
 
@@ -1078,7 +1112,11 @@ def cmd_set_default_pricing(args: argparse.Namespace) -> int:
 
 def _build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="gov.py")
-    ap.add_argument("--file", default="config/governance.toml", help="path to governance.toml")
+    ap.add_argument(
+        "--file",
+        default="config/governance.toml",
+        help="path to governance.toml",
+    )
     ap.add_argument("-v", "--verbose", action="store_true", help="debug logging")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -1096,18 +1134,35 @@ def _build_parser() -> argparse.ArgumentParser:
     # ─ gen-keys ─
     sp = sub.add_parser("gen-keys", help="generate Ed25519 keypairs")
     sp.add_argument("--dir", default="keys")
-    sp.add_argument("--agents", default="", help="comma-separated agent names, e.g. node-2,node-3")
+    sp.add_argument(
+        "--agents",
+        default="",
+        help="comma-separated agent names, e.g. node-2,node-3",
+    )
     sp.add_argument("--force", action="store_true")
     sp.set_defaults(func=cmd_gen_keys)
 
     # ─ gen-node ─
     sp = sub.add_parser("gen-node", help="generate a node-*.toml")
-    sp.add_argument("--name", required=True, help="short name (defaults for paths and peer names)")
+    sp.add_argument(
+        "--name",
+        required=True,
+        help="short name (defaults for paths and peer names)",
+    )
     sp.add_argument("--role", required=True, choices=["gateway", "issuer", "agent", "tool"])
     sp.add_argument("--spiffe-id", required=True)
-    sp.add_argument("--environment", default="development", choices=["development", "production"])
+    sp.add_argument(
+        "--environment",
+        default="development",
+        choices=["development", "production"],
+    )
     sp.add_argument("--listen", help="HOST:PORT (required for gateway/issuer/tool)")
-    sp.add_argument("--peer", action="append", default=[], metavar="NAME=HOST:PORT@SPIFFE_ID")
+    sp.add_argument(
+        "--peer",
+        action="append",
+        default=[],
+        metavar="NAME=HOST:PORT@SPIFFE_ID",
+    )
     sp.add_argument("--authority", default="keys/authority.pub")
     sp.add_argument("--bundle", default="config/governance.bundle")
     sp.add_argument("--cert", help="default: certs/{name}.crt")
@@ -1116,9 +1171,15 @@ def _build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--state", help="default: state/{name}.governance.state")
     sp.add_argument("--workload-seed", help="agent only (default: keys/{name}.seed)")
     sp.add_argument("--governor-seed", help="issuer only (default: keys/issuer.seed)")
-    sp.add_argument("--stores-backend", default="memory", choices=["memory", "redis", "database"])
     sp.add_argument(
-        "--gen-seed", action="store_true", help="agent: generate workload keypair if missing"
+        "--stores-backend",
+        default="memory",
+        choices=["memory", "redis", "database"],
+    )
+    sp.add_argument(
+        "--gen-seed",
+        action="store_true",
+        help="agent: generate workload keypair if missing",
     )
     sp.add_argument("--out", help="default: config/node-{name}.toml")
     sp.add_argument("--force", action="store_true")
@@ -1131,7 +1192,11 @@ def _build_parser() -> argparse.ArgumentParser:
     # ─ sign ─
     sp = sub.add_parser("sign", help="compile and sign the bundle")
     sp.add_argument("--key", required=True, help="path to current authority SEED")
-    sp.add_argument("--next-key", default=None, help="path to next authority SEED (rotation)")
+    sp.add_argument(
+        "--next-key",
+        default=None,
+        help="path to next authority SEED (rotation)",
+    )
     sp.add_argument("--out", required=True)
     sp.set_defaults(func=cmd_sign)
 
